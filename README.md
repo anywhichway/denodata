@@ -1,1 +1,3 @@
-# deno-index
+# denobase
+
+A Deno native 
