@@ -1,5 +1,5 @@
 {
-  "name": "deno-index",
+  "name": "denobase",
   "version": "0.0.1",
   "description": "Generalized indexing and search for Deno using Deno KV",
   "main": "index.js",
@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anywhichway/deno-index.git"
+    "url": "git+https://github.com/anywhichway/denobase.git"
   },
   "keywords": [
     "Deno",
