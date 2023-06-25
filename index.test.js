@@ -39,6 +39,27 @@ await db.clear();
 for(const book of books) {
     await db.put(book);
 }
+await db.set(1,1);
+await db.set(false,false);
+
+Deno.test("get primitive", async () => {
+    const result = await db.get(1);
+    assertEquals(result.value,1);
+})
+
+Deno.test("find using Array, i.e. key", async () => {
+    const results = await db.findAll([(value)=>typeof(value)!=="string" ? value : undefined]);
+    assertEquals(results.length,2);
+})
+
+Deno.test("delete using Array, i.e. key", async () => {
+    const test = (value)=> value===1 || value===false ? value : undefined;
+    await db.delete([test],{find:true});
+    const results = await db.findAll([test]);
+    assertEquals(results.length,0);
+})
+
+
 Deno.test("partial object index match", async () => {
     const results = await db.findAll({title: 'Reinventing Organizations'},{cname:"Book"});
     assertEquals(results.length,1);
