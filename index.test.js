@@ -161,3 +161,14 @@ Deno.test("patch", async (t) => {
         assertEquals(results.length,0);
     })
 });
+
+Deno.test("patch with find", async (t) => {
+    await t.step("patch",async () => {
+        await db.set(1,1);
+        await db.patch((value) => value+1,{pattern:[1]});
+    })
+    await t.step("verify",async () => {
+        const entry = await db.get(1);
+        assertEquals(entry.value,2);
+    })
+})

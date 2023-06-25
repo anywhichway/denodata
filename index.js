@@ -405,7 +405,15 @@ const Denobase = async (options={}) => {
             //console.log(start,end);
             let matchCount = 0;
             try {
-                for await (const match of db.list({start, end, limit})) {
+                const list = !isArray || rangekey.some((item) => item===undefined)
+                    ? this.list({start, end, limit})
+                    : async function*() {
+                        const entry = await db.get(rangekey);
+                        if(entry && entry.value!==undefined) {
+                            yield entry;
+                        }
+                    }();
+                for await (const match of list) {
                     matchCount++;
                     const id = isArray ? JSON.stringify(match.key) : (pattern ? match.key.pop() : match.key[0]);
                     if (pattern) {
@@ -514,27 +522,47 @@ const Denobase = async (options={}) => {
         return result;
     }
 
-    db.patch = async function (object, {cname} = {}) {
-        if (!object || typeof (object) !== "object") {
-            throw new TypeError(`Can't patch non-object: ${object}.`);
+    db.patch = async function (value, {cname,pattern} = {}) {
+        const type = typeof (value);
+        if (!pattern && (!value || type !== "object")) {
+            throw new TypeError(`Can't patch non-object: ${value}.`);
         }
-        object = serializeSpecial()(object);
-        cname ||= getCname(object["#"]) || object.constructor.name;
+        if(value && type==="object") {
+            value = {...value}
+        }
+        if(pattern) {
+            for await(const entry of this.find(pattern,{cname})) {
+                if(type==="object") {
+                    value["#"] = entry.key;
+                    await this.patch(value, {cname});
+                } else if(type==="function") {
+                    const newValue = value(entry.value);
+                    if(newValue!==undefined) {
+                        await this.set(entry.key,newValue);
+                    }
+                } else {
+                    this.set(entry.key, value);
+                }
+            }
+            return;
+        }
+        value = serializeSpecial()(value);
+        cname ||= getCname(value["#"]) || object.constructor.name;
         const indexes = [];
         Object.values(this.schema[cname]?.indexes || {}).forEach(({type, keys}) => {
             indexes.push({indexType: type, keys})
         })
-        const id = object["#"] ||= createId(cname),
+        const id = value["#"] ||= createId(cname),
             entry = await this.get([id]),
             patched = entry.value || {};
         if (indexes.length === 0) {
-            Object.assign(patched, object)
+            Object.assign(patched, value)
             await this.put(patched);
             return id;
         } else {
             for (const {indexType, indexKeys} of indexes) {
                 const oldIndexKeys = getKeys.call(this, patched, indexKeys, {indexType, cname}),
-                    newIndexKeys = getKeys.call(this, object, indexKeys, {indexType, cname}),
+                    newIndexKeys = getKeys.call(this, value, indexKeys, {indexType, cname}),
                     removeKeys = oldIndexKeys.reduce((removeKeys, oldKey) => {
                         if (newIndexKeys.some((newKey) => matchKeys(oldKey, newKey))) {
                             return removeKeys;
@@ -553,7 +581,7 @@ const Denobase = async (options={}) => {
                     keys = removeKeys.splice(0, 10);
                 }
             }
-            Object.assign(patched, object);
+            Object.assign(patched, value);
             return await db.put(patched, {cname});  // should put inside a transaction
         }
     }
