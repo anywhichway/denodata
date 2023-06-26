@@ -196,37 +196,14 @@ const operators = {
         const value = typeof(right)==="number" ? right+"" : right;
         return typeof(value)==="string" && value.match(test) ? right : undefined
     },
-    $similar(right, {test}) { // same as $matches, familiar to SQL developers
-        const value = typeof(right)==="number" ? right+"" : right;
-        return typeof(value)==="string" && value.match(test) ? right : undefined
+    $similar(...args) { // same as $matches, familiar to SQL developers
+        return this.$matches(...args);
     },
     $echoes(right, {test}) {
         return typeof(right)==="string" && typeof(test)==="string" && soundex(right)===soundex(test) ? right : undefined
     },
     $soundsLike(...args) {
         return this.$echoes(...args)
-    },
-    $distance(right, {test},throws) { // trap only used in testing
-        let _right = right,_test = test,_compare,_options;
-        if(Array.isArray(right)) {
-            _right = right[0];
-            _compare = right[1];
-            _options = right[2]||{};
-        } else {
-            _test = test[0];
-            _compare = test[1];
-            _options = test[2]||{};
-        }
-        try {
-            const {method=typeof(_test)==="string" ? levenshteinDistance : simpleDistance,vectorize} = _options,
-                distance = method(_right,_test,{normalize:_compare < 1 ? true : false,vectorize}),
-                result = _compare<1 ? distance/Math.max(_right.length,_test.length) : distance;
-            if(result<=_compare) {
-                return result;
-            }
-        } catch(e) {
-            if(throws) throw e;
-        }
     },
 
     $add(right, {test}) {
@@ -310,6 +287,77 @@ const operators = {
 */
 }
 
+const functionalOperators = Object.entries(operators).reduce((operators,[key,f]) => {
+    operators[key] = function(test) {
+        let join;
+        const op = (left,right) => {
+            return join ? f(left,right) : f(left,{test});
+        }
+        return op;
+    }
+    operators.$and = (...tests) => {
+        const op = (left,right) => {
+            op.count = 0;
+            op.possibleCount = tests.length;
+            for(const test of tests) {
+                const result = typeof(test)==="function" ? test(left,right) : (test===left ? test : undefined);
+                if(result==undefined) {
+                    op.count = 0;
+                    break;
+                }
+                op.count += test ? test.count||1 : 1;
+            }
+            return op.count > 0 ? true : undefined;
+        }
+        return op;
+    }
+    operators.$or = (...tests) => {
+        const op = (left,right) => {
+            op.count = 0;
+            op.possibleCount = 1;
+            for(const test of tests) {
+                const result = typeof(test)==="function" ? test(left,right) : (test===left ? test : undefined);
+                if(result!==undefined) {
+                    op.count += test ? test.count||1 : 1;
+                    break;
+                }
+            }
+            return op.count > 0 ? true : undefined;
+        }
+        return op;
+    }
+    operators.$ior = (...tests) => {
+        const op = (left,right) => {
+            op.count = 0;
+            op.possibleCount = tests.length;
+            for(const test of tests) {
+                const result = typeof(test)==="function" ? test(left,right) : (test===left ? test : undefined);
+                if(result!==undefined) {
+                    op.count += test ? test.count||1 : 1;
+                }
+            }
+            return op.count > 0 ? true : undefined;
+        }
+        return op;
+    }
+    operators.$not = (...tests) => {
+        const op = (left,right) => {
+            op.count = 0;
+            op.possibleCount = tests.length;
+            for(const test of tests) {
+                const result = typeof(test)==="function" ? test(left,right) : (test===left ? test : undefined);
+                if(result!==undefined) {
+                    op.count = 0;
+                    break;
+                }
+                op.count += test ? test.count||1 : 1;
+            }
+            return op.count > 0 ? true : undefined;
+        }
+        return op;
+    }
+    return operators;
+},{});
 
 //export {functionalOperators as default, functionalOperators as operators, DONE};
-export {operators as default,operators,DONE}
+export {functionalOperators as default,functionalOperators as operators,operators as rawOperators,DONE}

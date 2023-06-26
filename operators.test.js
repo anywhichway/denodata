@@ -1,5 +1,5 @@
 import { expect } from "https://deno.land/x/expect@v0.2.1/mod.ts";
-import {operators,DONE} from './operators.js';
+import {rawOperators as operators,DONE} from './operators.js';
 
 const test = Deno.test.bind(Deno);
 test("$type",() => {
@@ -136,10 +136,19 @@ test("$matches",() => {
     expect(operators.$matches(1, {test: /2/})).toBeUndefined();
     expect(operators.$matches(2, {test: /2/})).toBe(2);
 })
+test("$similar",() => {
+    expect(operators.$similar(1, {test: /2/})).toBeUndefined();
+    expect(operators.$similar(2, {test: /2/})).toBe(2);
+})
 
 test("$echoes",() => {
     expect(operators.$echoes("lyme", {test: "lime"})).toBe("lyme");
     expect(operators.$echoes("lemon", {test: "apple"})).toBeUndefined();
+})
+
+test("$soundsLike",() => {
+    expect(operators.$soundsLike("lyme", {test: "lime"})).toBe("lyme");
+    expect(operators.$soundsLike("lemon", {test: "apple"})).toBeUndefined();
 })
 
 
@@ -181,7 +190,6 @@ test("$isPrime",() => {
 })
 
 test("$isNaN",() => {
-    debugger;
     expect(operators.$isNaN(1, {test: true})).toBeUndefined();
     const nan = operators.$isNaN(NaN, {test: true});
     expect(Number.isNaN(nan)).toBe(true);

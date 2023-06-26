@@ -1,5 +1,7 @@
-//import {Denobase,operators} from "https://unpkg.com/denobase";
-import {Denobase,operators} from "./index.js";
+//import {Denobase} from "https://unpkg.com/denobase";
+//import {operators} from "https://unpkg.com/denobase/operators";
+import {Denobase} from "./index.js";
+import {operators} from "./operators.js";
 const {$startsWith,$eq} = operators;
 
 const db = await Denobase();

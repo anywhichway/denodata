@@ -1,4 +1,3 @@
-import {operators as baseOperators} from "./operators.js";
 
 const getValue = (key, data) => {
     const keys = key.split(".");
@@ -154,11 +153,11 @@ const serializeSpecial = ({keepUndefined, keepRegExp} = {}) => (key, value) => {
     if (keepUndefined && key && value === undefined) return "@undefined";
     const type = typeof (value);
     if (type === "symbol") return "@Symbol(" + value.toString() + ")";
-    if (type === "bignint") return "@BigInt(" + value.toString() + ")";
+   // if (type === "bignint") return "@BigInt(" + value.toString() + ")";
     if (value && type === "object") {
         if (value instanceof Date || value.constructor.name === "Date") return "@Date(" + value.getTime() + ")";
         if (isRegExp(value)) return keepRegExp ? value : "@RegExp(" + value.toString() + ")";
-        if (value instanceof Symbol) return "@Symbol(" + value.toString() + ")";
+        //if (value instanceof Symbol) return "@Symbol(" + value.toString() + ")";
         const proto = Object.getPrototypeOf(value);
         value = {...value};
         Object.setPrototypeOf(value, proto);
@@ -179,15 +178,15 @@ const toKey = (value) => {
     const type = typeof (value);
     if(value && type==="object") {
         if(value instanceof Uint8Array) return [value];
-        if(value instanceof Array) return value;
-        if(value instanceof Date) return serializeSpecial()(null, value);
-        if(isRegExp(value)) return serializeSpecial()(null, value);
-    } else if(type==="bigint" || type==="symbol") {
-        return serializeSpecial()(null, value);
-    } else if(type==="boolean" || type==="number" || type==="string" || value===null) {
+        if(value instanceof Array) return value.map((item) => toKey(item)[0])
+        if(value instanceof Date) return [serializeSpecial()(null, value)];
+        if(isRegExp(value)) return [serializeSpecial()(null, value)];
+    } else if(type==="symbol") {
+        return [serializeSpecial()(null, value)];
+    } else if(type==="boolean" || type==="number" || type==="string" || type==="bigint" || type==="function" || value===null) {
         return [value];
     }
-    throw new TypeError("Key must be one of: bigint, boolean, null, number, string, symbol, Date, RegExp, Uint8Array, Array");
+    throw new TypeError("Key type must be one of: bigint, boolean, function, null, number, string, symbol, Date, RegExp, Uint8Array, Array");
 }
 
 const toPattern = (key) => {
@@ -264,6 +263,7 @@ const Denobase = async (options={}) => {
             const object = await this.get(key);
             await this.put(object, {indexType, indexKeys: keys});
         }
+        return this.schema[cname].indexes[name];
     }
 
     db.transaction = async function (f) {
@@ -388,21 +388,23 @@ const Denobase = async (options={}) => {
         let matches = {};
         for (let i = 0; i < indexKeys.length; i++) {
             const key = indexKeys[i],
-                // need to mod for when using table index, get the required fields for the index from the schema
-                rangekey = toPattern(key),
+                rangekey = key[key.length-1]===true ? toPattern([...key,new Uint8Array([])]) : toPattern(key),
                 start = pattern
                     // for index lookups main part of key alternates between string and any type, otherwise undefined is any type
                     ? [...rangekey.map((item, i) => item === undefined ? ((i % 2 && isTable) || isArray ? new Uint8Array([]) : "") : item)]
                     : [cname ? `${cname}@00000000-0000-0000-000000000000` : ""],
                 end = pattern
-                    ? [...rangekey.map((item, i) => item === undefined ? ((i % 2 && isTable) || isArray ? true : -Infinity) : item)]
-                    : [cname ? `${cname}@@ffffffff-ffff-ffff-ffffffffffff` : -Infinity],
+                    ? [...rangekey.map((item, i) => item === undefined ? ((i % 2 && isTable) || isArray ? true : -NaN) : item)]
+                    : [cname ? `${cname}@@ffffffff-ffff-ffff-ffffffffffff` : -NaN],
                 submatches = {};
             if(indexPrefix && pattern) {
                 start.unshift(indexPrefix);
                 start.push(cname ? `${cname}@00000000-0000-0000-000000000000` : "")
                 end.unshift(indexPrefix);
-                end.push(cname ? `${cname}@ffffffff-ffff-ffff-ffffffffffff` : -Infinity)
+                if(end[end.length-1] === true) {
+                    end.push(new Uint8Array([]));
+                }
+                end.push(cname ? `${cname}@ffffffff-ffff-ffff-ffffffffffff` : -NaN)
             }
             let subcount = 0;
             //console.log(start,end);
@@ -638,76 +640,4 @@ const Denobase = async (options={}) => {
     return db;
 }
 
-const operators = Object.entries(baseOperators).reduce((operators,[key,f]) => {
-    operators[key] = function(test) {
-        let join;
-        const op = (left,right) => {
-            return join ? f(left,right) : f(left,{test});
-        }
-        return op;
-    }
-    operators.$and = (...tests) => {
-        const op = (left,right) => {
-            op.count = 0;
-            op.possibleCount = tests.length;
-            for(const test of tests) {
-                const result = typeof(test)==="function" ? test(left,right) : (test===left ? test : undefined);
-                if(result==undefined) {
-                    op.count = 0;
-                    break;
-                }
-                op.count += test ? test.count||1 : 1;
-            }
-            return op.count > 0 ? true : undefined;
-        }
-        return op;
-    }
-    operators.$or = (...tests) => {
-        const op = (left,right) => {
-            op.count = 0;
-            op.possibleCount = 1;
-            for(const test of tests) {
-                const result = typeof(test)==="function" ? test(left,right) : (test===left ? test : undefined);
-                if(result!==undefined) {
-                    op.count += test ? test.count||1 : 1;
-                    break;
-                }
-            }
-            return op.count > 0 ? true : undefined;
-        }
-        return op;
-    }
-    operators.$ior = (...tests) => {
-        const op = (left,right) => {
-            op.count = 0;
-            op.possibleCount = tests.length;
-            for(const test of tests) {
-                const result = typeof(test)==="function" ? test(left,right) : (test===left ? test : undefined);
-                if(result!==undefined) {
-                    op.count += test ? test.count||1 : 1;
-                }
-            }
-            return op.count > 0 ? true : undefined;
-        }
-        return op;
-    }
-    operators.$not = (...tests) => {
-        const op = (left,right) => {
-            op.count = 0;
-            op.possibleCount = tests.length;
-            for(const test of tests) {
-                const result = typeof(test)==="function" ? test(left,right) : (test===left ? test : undefined);
-                if(result!==undefined) {
-                    op.count = 0;
-                    break;
-                }
-                op.count += test ? test.count||1 : 1;
-            }
-            return op.count > 0 ? true : undefined;
-        }
-        return op;
-    }
-    return operators;
-},{});
-
-export {Denobase as default,Denobase,operators};
+export {Denobase as default,Denobase};

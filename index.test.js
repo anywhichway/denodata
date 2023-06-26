@@ -1,6 +1,6 @@
 import { expect } from "https://deno.land/x/expect@v0.2.1/mod.ts";
-import {Denobase,operators} from "./index.js";
-//import {Denobase,operators} from "https://unpkg.com/denobase";
+import {Denobase} from "./index.js";
+import {operators} from "./operators.js";
 const {$echoes} = operators;
 
 const db = await Denobase();
@@ -32,20 +32,38 @@ const books = [{
     published: now
 })];
 
-await db.createIndex({indexType:"table",cname:"Book",ctor:Book,keys:["author","title"]});
-await db.createIndex({indexType:"object",cname:"Book",ctor:Book,keys:Object.keys(books[0])});
-
 await db.clear();
-for(const book of books) {
-    await db.put(book);
-}
 await db.set(1,1);
 await db.set(false,false);
+Deno.test("create Index", async () => {
+    const i1 = await db.createIndex({indexType:"table",cname:"Book",ctor:Book,keys:["author","title"]}),
+        i2 = await db.createIndex({indexType:"object",cname:"Book",ctor:Book,keys:Object.keys(books[0])});
+    expect(Object.keys(db.schema.Book.indexes).length).toEqual(2);
+    expect(i1.type).toEqual("table");
+    expect(i2.type).toEqual("object");
+    for(const book of books) {
+        await db.put(book);
+    }
+});
 
 Deno.test("get primitive", async () => {
     const result = await db.get(1);
     expect(result.value).toEqual(1);
 })
+
+Deno.test("patch non-object throws", async() => {
+    await expect(db.patch(1)).rejects.toThrow();
+});
+Deno.test("patch primitive with find", async() => {
+    await db.patch(2,{pattern:[1]});
+    const result = await db.get(1);
+    expect(result.value).toEqual(2);
+});
+
+Deno.test("delete object no id throws", async() => {
+    await expect(db.delete({})).rejects.toThrow();
+});
+
 
 Deno.test("find using Array, i.e. key", async () => {
     const results = await db.findAll([(value)=>typeof(value)!=="string" ? value : undefined]);
@@ -58,7 +76,6 @@ Deno.test("delete using Array, i.e. key", async () => {
     const results = await db.findAll([test]);
     expect(results.length).toEqual(0);
 })
-
 
 Deno.test("partial object index match", async () => {
     const results = await db.findAll({title: 'Reinventing Organizations'},{cname:"Book"});

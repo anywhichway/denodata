@@ -328,12 +328,21 @@ The following operators are supported in patterns.
 
 # Testing
 
-Some unit tests in place. More to come, including coverage report.
+Some unit tests in place.
+
+`index.js ... index.js ... 69.362% (446/643)`
+`operators.js ... 80.769% (294/364)`
+
 
 # Release History (Reverse Chronological Order)
 
-Until production release all versions will just have a tertiary version number.
+Until production release, all versions will just have a tertiary version number.
 Beta will commence when unit test coverage first exceeds 90%.
+
+2023-06-26 v0.0.4 (Alpha)
+  - Added unit tests for patch and delete
+  - Started reporting test coverage
+  - Enhanced documentation
 
 2023-06-26 v0.0.3 (Alpha)
   - Added unit tests for operators
