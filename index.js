@@ -1,3 +1,5 @@
+import {operators as baseOperators} from "./operators.js";
+
 const getValue = (key, data) => {
     const keys = key.split(".");
     let result = data;
@@ -19,11 +21,12 @@ function getKeys(key, value, schemaKeys, {indexType, cname, noTokens} = {}, {has
         if (isRegExp(value) || value instanceof Date) {
             keys.push([...key, value])
         } else {
+            schemaKeys ||= cname ? Object.values(this.schema[cname].indexes).filter(index => index.type===indexType).map((index) => index.keys) : [];
             if (indexType === "object") {
                 for (const entry of Object.entries(value)) {
                     const regExp = toRegExp(entry[0]),
                         next = regExp ? regExp : entry[0];
-                    if (regExp || hasRegExp || !schemaKeys || schemaKeys.some((schemaKey) => schemaKey.startsWith([...key, next].join(".")))) {
+                    if (regExp || hasRegExp || schemaKeys.length===0 || schemaKeys.some((keys) => keys.some((schemaKey) => schemaKey.startsWith([...key, next].join("."))))) {
                         const val = typeof (entry[1]) === "function" ? entry[1].bind(value) : entry[1];
                         getKeys.call(this, [...key, next], val, schemaKeys, {indexType, noTokens}, {
                             keys,
@@ -32,7 +35,6 @@ function getKeys(key, value, schemaKeys, {indexType, cname, noTokens} = {}, {has
                     }
                 }
             } else if (indexType === "table") {
-                schemaKeys ||= Object.values(this.schema[cname].indexes).map((index) => index.keys);
                 for (const properties of schemaKeys) {
                     const key = [];
                     for (const property of properties) {
@@ -374,6 +376,7 @@ const Denobase = async (options={}) => {
           cname = pattern.constructor.name;
         }
         const indexType = indexName ? "table" : "object",
+            isTable = indexType === "table",
             keys = indexName ? this.schema[cname].indexes[indexName]?.keys : null,
             // if pattern is an array then it is a key pattern, otherwise it is an object pattern
             indexKeys = pattern ?  (Array.isArray(pattern) ? [pattern] : getKeys.call(this, pattern, keys ? [keys] : null, {indexType})) : [["#", (value) => value]],
@@ -389,10 +392,10 @@ const Denobase = async (options={}) => {
                 rangekey = toPattern(key),
                 start = pattern
                     // for index lookups main part of key alternates between string and any type, otherwise undefined is any type
-                    ? [...rangekey.map((item, i) => item === undefined ? (i % 2  || isArray ? new Uint8Array([]) : "") : item)]
+                    ? [...rangekey.map((item, i) => item === undefined ? ((i % 2 && isTable) || isArray ? new Uint8Array([]) : "") : item)]
                     : [cname ? `${cname}@00000000-0000-0000-000000000000` : ""],
                 end = pattern
-                    ? [...rangekey.map((item, i) => item === undefined ? (i % 2 || isArray ? true : -Infinity) : item)]
+                    ? [...rangekey.map((item, i) => item === undefined ? ((i % 2 && isTable) || isArray ? true : -Infinity) : item)]
                     : [cname ? `${cname}@@ffffffff-ffff-ffff-ffffffffffff` : -Infinity],
                 submatches = {};
             if(indexPrefix && pattern) {
@@ -464,7 +467,7 @@ const Denobase = async (options={}) => {
             }
             if (currentOffset >= offset) {
                 const entry = deserializeSpecial(null, await db.get(key));
-                if (entry.value == null) {
+                if (entry.value == null) { // should this be undefined?
                     await this.delete([key]); // database clean-up
                     continue;
                 }
@@ -517,7 +520,7 @@ const Denobase = async (options={}) => {
         const result = await _get.call(this, toKey(key));
         if(result.value && result.key.length===1 && isId(result.key[0]) && typeof(result.value) === "object") {
             const ctor = this.schema[getCname(result.key[0])]?.ctor;
-            if(ctor) result.value = new ctor(result.value)
+            if(ctor) result.value = Object.assign(Object.create(ctor.prototype),result.value);
         }
         return result;
     }
@@ -586,13 +589,18 @@ const Denobase = async (options={}) => {
         }
     }
 
-    db.put = async function (object, {cname, indexType, indexKeys} = {}) {
+    db.put = async function (object, {cname, indexType, autoIndex,indexKeys} = {}) {
         if (!object || typeof (object) !== "object") {
             throw new TypeError(`Can't put non-object: ${object}. Do you mean to use set(key,value)?`);
         }
         object = serializeSpecial()(object);
         cname ||= getCname(object["#"]) || object.constructor.name;
-        const indexes = [];
+        const id = object["#"] ||= createId(cname),
+            indexes = [];
+        if(autoIndex && !indexKeys && indexType!=="table") {
+            indexKeys = Object.keys(object);
+            indexType = "object";
+        }
         if (indexType && indexKeys) {
             indexes.push({indexType, indexKeys})
         } else {
@@ -600,7 +608,6 @@ const Denobase = async (options={}) => {
                 if (!indexType || type === indexType) indexes.push({indexType: type, keys})
             })
         }
-        const id = object["#"] ||= createId(cname);
         if (indexes.length === 0) {
             await this.set([id], object);
             return id;
@@ -608,7 +615,7 @@ const Denobase = async (options={}) => {
         await this.delete([id], {indexOnly: true}); // clears all index entries
         for (let i = 0; i < indexes.length; i++) {
             let {indexType = "object", indexKeys} = indexes[i];
-            const keys = getKeys.call(this, object, indexKeys, {indexType, cname}),
+            const keys = getKeys.call(this, object, indexKeys ? [indexKeys] : null, {indexType, cname}),
                 indexPrefix = toIndexPrefix(indexType);
             let keyBatch = keys.splice(0, 10); // 10 is max changes in a transaction
             while (keyBatch.length > 0) {
@@ -631,4 +638,76 @@ const Denobase = async (options={}) => {
     return db;
 }
 
-export {Denobase as default,Denobase};
+const operators = Object.entries(baseOperators).reduce((operators,[key,f]) => {
+    operators[key] = function(test) {
+        let join;
+        const op = (left,right) => {
+            return join ? f(left,right) : f(left,{test});
+        }
+        return op;
+    }
+    operators.$and = (...tests) => {
+        const op = (left,right) => {
+            op.count = 0;
+            op.possibleCount = tests.length;
+            for(const test of tests) {
+                const result = typeof(test)==="function" ? test(left,right) : (test===left ? test : undefined);
+                if(result==undefined) {
+                    op.count = 0;
+                    break;
+                }
+                op.count += test ? test.count||1 : 1;
+            }
+            return op.count > 0 ? true : undefined;
+        }
+        return op;
+    }
+    operators.$or = (...tests) => {
+        const op = (left,right) => {
+            op.count = 0;
+            op.possibleCount = 1;
+            for(const test of tests) {
+                const result = typeof(test)==="function" ? test(left,right) : (test===left ? test : undefined);
+                if(result!==undefined) {
+                    op.count += test ? test.count||1 : 1;
+                    break;
+                }
+            }
+            return op.count > 0 ? true : undefined;
+        }
+        return op;
+    }
+    operators.$ior = (...tests) => {
+        const op = (left,right) => {
+            op.count = 0;
+            op.possibleCount = tests.length;
+            for(const test of tests) {
+                const result = typeof(test)==="function" ? test(left,right) : (test===left ? test : undefined);
+                if(result!==undefined) {
+                    op.count += test ? test.count||1 : 1;
+                }
+            }
+            return op.count > 0 ? true : undefined;
+        }
+        return op;
+    }
+    operators.$not = (...tests) => {
+        const op = (left,right) => {
+            op.count = 0;
+            op.possibleCount = tests.length;
+            for(const test of tests) {
+                const result = typeof(test)==="function" ? test(left,right) : (test===left ? test : undefined);
+                if(result!==undefined) {
+                    op.count = 0;
+                    break;
+                }
+                op.count += test ? test.count||1 : 1;
+            }
+            return op.count > 0 ? true : undefined;
+        }
+        return op;
+    }
+    return operators;
+},{});
+
+export {Denobase as default,Denobase,operators};

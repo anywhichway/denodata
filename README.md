@@ -2,70 +2,105 @@
 
 A Deno native indexed database. Backed by the `DenoKV` store it has zero external dependencies.
 
-Both traditional table oriented and object-oriented index approaches are supported and can be mixed and matched.
+Both traditional table-oriented and object-oriented index approaches are supported and can be mixed and matched.
 
-The standard key-value functions remain available and are enhanced to support the indexing features.
+The standard `DenoKV` key-value functions remain available and are enhanced to support the indexing features.
 
 Support for automatic serialization and deserialization of class instances.
 
-A powerful `db.find` function with over 50 operators including RegExp, soundex/echoes, credit card, SSNs and more. If something is missing, you can add it in as little as one line.
-
-The find functionality includes partial matching.
+A powerful `db.find` function that works on both indexes and regular keys with over 50 operators including RegExp, soundex/echoes, credit card, SSNs and more. If something is missing, it can be added in as little as one line.
 
 # Usage
 
 ```javascript
-import { Denobase } from "denobase";
-import {operators} from "denobase/operators";
-const {$startsWith} = operators;
+import {Denobase,operators} from "https://unpkg.com/denobase";
+const {$startsWith,$eq} = operators;
 
-const db = new Denobase();
+const db = await Denobase();
 
 // Use like DenoKV
 await db.set("mykey", "myvalue");
-let {key,value,version} = await db.get("mykey");
+const {key,value,version} = await db.get("mykey");
 await db.delete(["mykey"]);
 
 // Use simplified and extended DenoKV
-await db.set("mykey", "myvalue");
-let {key,value,version} = await db.get("mykey");
+await db.set("mykey", "myvalue"); // primitves are automatically converted to arrays
+await (async () => { const {key,value,version} = await db.get("mykey")})();
 await db.delete("mykey"); // using an array for the key is optional, autmatic conversion is done
+await db.clear(); // DenoKV does not provide a clear function.
 
 // Use with automatic object indexes
-const id = await db.put({id:1,name:"John Doe",age:42},{cname:"Person"});
-let {key,value,version} = await db.get(id);
-for await (let {key,value,version} of db.find({age:42},{cname:"Person"})) {
+const id = await db.put({id:1,name:"John Doe",age:42},{cname:"Person",autoIndex:true});
+await (async () => {
+  const {key,value,version} = await db.get(id);
+  console.log(value); // prints the Person instance
+})();
+// find with literals
+await (async () => {
+  for await (const {key,value,version} of db.find({age:42},{cname:"Person"})) {
     console.log(value); // prints the Person instance
-}
-await db.delete(value); // deletes the Person instance, updates indexes
-// or await db.delete(id); // deletes the Person instance, updates indexes
+  }
+})();
+// use built in operators
+await (async () => {
+  for await (const {key,value,version} of db.find({age:$eq(42)},{cname:"Person"})) {
+    console.log(value); // prints the Person instance
+  }
+})();
+// inline your own operators
+await (async () => {
+  for await (const {key, value, version} of db.find({age: (v) => v === 42 ? v : undefined}, {cname: "Person"})) {
+    console.log(value); // prints the Person instance
+  }
+  await db.delete(value);
+  // or await db.delete(id); // deletes the Person instance, updates indexes
+})();
 
 // Use with declared indexes and classes
 class Book {
-    constructor(author, title,publisher) {
-        this.author = author;
-        this.title = title;
-        this.publisher = {
-            name:publisher
-        }
+  constructor(author, title,publisher) {
+    this.author = author;
+    this.title = title;
+    this.publisher = {
+      name:publisher
     }
+  }
 }
-await db.createIndex({indexType:"object",ctor:Book,keys:["title","publisher"]});
+await db.createIndex({indexType:"object",ctor:Book,keys:["author","title","publisher"]});
 await db.createIndex({indexType:"table",ctor:Book,keys:["author","title","publisher.name"]});
-
 await db.put(new Book("John Doe", "My Life","ACME, Inc"));
-for await (let {key,value,version} of db.find(
-        {author:"John Doe"},// partial match pattern
-        {cname:"Book",indexName:"author_title_publisher.name"})) { // use the table index
-    console.log(value); // prints the Book instance, most efficient
-}
-for await (let {key,value,version} of db.find(new Book({publisher:$startsWith("ACME")}))) { // use any available index
-  console.log(value); // prints the Book instance
-}
-for await (let {key,value,version} of db.find({author:"John Doe"})) { // use any available index across all classes
-  console.log(value); // prints the Book instance, less efficient due to large index scans
-}
+await (async () => {
+  for await (const {key,value,version,score,count,offsetCount,totalCount} of db.find(
+          {author:"John Doe",title:"My Life"},// partial match pattern
+          {cname:"Book",indexName:"author_title_publisher.name"})) { // use the table index
+    console.log(value); // prints Book instance
+  }
+})();
+await (async () => {
+  for await (const {key, value, version} of db.find(new Book(undefined,undefined,$startsWith("ACME")))) {
+    console.log(value); // prints Book instance, a cname for index matching is inferred from class of pattern
+  }
+})();
+await (async () => {
+  for await (const {key, value, version, score} of db.find(
+          {author: "John Doe",title:"Another Life"},
+          {minScore:.5,cname:"Book",indexType:"object"})) { // use object index (minScore is only supported for object indexes)
+    console.log(value,score); // prints Book instance, less efficient, large index scans because of lack of cname
+  }
+})();
+await (async () => {
+  for await (const {key, value, version} of db.find(
+          {author: "John Doe"})) { // use object index since index name is not specified
+    console.log(value); // prints Book instance, less efficient, large index scans because of lack of cname
+  }
+})();
 ```
+
+# Installation
+
+Not yet available on `deno.land/x`. For now, use: `import {Denobase,operators} from "https://unpkg.com/denobase";`
+
+Run deno with the `--allow-net` and  `--unstable` flags.
 
 # API
 
@@ -114,9 +149,9 @@ Note:
     - `count` - the position of the entry in the results after the initial search offset is applied
     - `totalCount` - the total number of entries in the results
 
-- `pattern` can be an array or an object. If it is an array, it is treated similar to a DenoKV key, except the pattern matching semantics below apply.  If it is an object, it is converted into a collection of keys for matching against indexes.
+- `pattern` can be an array or an object. If it is an array, it is treated similar to a DenoKV key, except additional pattern matching semantics below apply.  If it is an object, it is converted into a collection of keys for matching against indexes.
 
-- If `pattern` is a POJO, the `cname` parameter can be used to treat it like a class.
+- If `pattern` is a POJO, the `cname` parameter can be used to treat it like a class. If `pattern` is an object and `cname` is not specified, the `cname` the `constructor.name` property of the object, unless it is a POJO, in which case a cross class search is conducted.
 
 - The key pattern matching semantics are as follows:
 
@@ -127,10 +162,10 @@ Note:
     - The final set of keys is filtered to ensure that the keys match the pattern(s) exactly, e.g. functions in the pattern(s) are used to test the key part at the same index.
     - The values associated with the keys are retrieved from the database.
   
-- If `valueMatch` is specified, it is used to filter the resulting values. The semantics are as follows:
+- If `valueMatch` is specified, it is used to filter the resulting entries. The semantics are as follows:
 
-  - If it is a function, it is called with the value and any return value that is not `undefined` is used as the result.
-  - Each property in the pattern, including nested properties, is found in the value and is tested using the literal value, function, or RegExp in the corresponding property of the pattern. If a function returns anything other than `undefined` the match is successful and the result is used as the property value. If a property value fails the match, the object is discarded.
+  - If it is a function, it is called with the entry value and any return value that is not `undefined` is used as the result.
+  - If it is an object, each property in the `valueMatch`, including nested properties, is found in the value and is tested using the literal value, function, or RegExp in the corresponding property of the pattern. If a function returns anything other than `undefined` the match is successful and the result is used as the property value. If a property value fails the match, the object is discarded.
 
 - If `minScore` is specified, it should be a number between 0 and 1 that represents the percentage of the pattern that needs to match.
 
@@ -140,19 +175,21 @@ Note:
 
 `Entry db.get(key:primitive|UInt8Array|array)`
 
-- Works like `DenoKV.get` except that if the value is a class instance saved using `db.put`, it is automatically deserialized and instantiated.
+- Works like `DenoKV.get` except that if the entry value is a class instance saved using `db.put`, it is automatically deserialized and instantiated.
 
 `Entry db.patch(value:object|function,{?cname:string,?pattern:array|object})`
 
-- If value is an object and `pattern` is not provided, finds the object in the database based on its id, applies the changes, updates indexes, and saves the object.
+- If value is an object and `pattern` is not provided, `db.patch` finds the object in the database based on its id, applies the changes, updates indexes, and saves the object.
 - If `pattern` is provided, it is used as an argument to `db.find` and all matching entries are updated using `value`. If `value` is a primitive, it is used as the new value. If it is an object, it is merged with the existing value. If it is a function, it is called with the existing value and the return value is used as the new value. If the function returns `undefined`, the value is not changed.
 - Using `undefined` as a property or a sub-property of `value` deletes the property.
-- If value is an object with and it does not exist, it is created.
+- If value is an object and it does not exist, it is created.
 - If `cname` is provided, the object is treated as an instance of `cname`.
 
-`void db.put(object,{?cname:string})` 
+`void db.put(object,{?cname:string,?autoIndex:boolean})` 
 
 - Takes an object, assigns an id if necessary, populates/updates indexes, and serializes then saves the object using the id as the key.
+- If `cname` is provided, the object is treated as an instance of `cname`.
+- If `autoIndex` is `true`, the object is indexed using all of its keys.
 
 - `Denobase` serializes `bigints`, `symbols`, `Dates`, and `RegExp` so that they can be restored.
 
@@ -162,7 +199,52 @@ Note:
 
 # Index Structure
 
-To be written.
+The index structure is documented for convenience and will not be finalized until the final BETA release. At the moment the structure is easy to manage but quite large. It is RAM efficient, but read/write heavy. It is likely changes will be made to optimize for read/write at the expense of RAM.
+
+Index keys are arrays that start with a prefix indicating the type of index, `__oindex__` for object indexes and `__tindex__` for table indexes. The prefix is followed by property names and a value. The final component is the id of the object.
+
+Indexes are named based on the keys they contain.
+
+Unless restricted by an index definition, an object index has one entry for each property and sub-property in an object. Sub-properties results in a sequence of propertye names in the index key. These are followed by the value and finally the id of the object. For example, a full object index of `{a: {b: 1},c:2,"#":'id'}` would have the following index entries:
+
+```javascript
+['__oindex__', 'a', 'b', 1, 'id']
+['__oindex__', 'c', 2, 'id']
+['__oindex__', '#', 'id']
+```
+
+Table indexes are not generated automatically. Nested properties will appear in the index key using dot notation; whereas, for object indexes the key arrays just get longer. Immediately after a property names is its value. The final component is the id of the object. For example, a full table index of `{a: {b: 1},c:2,"#":'id'}` would have the following index entries:
+
+```javascript
+['__tindex__', 'a.b', 1, 'id']
+['__tindex__', 'c', 2, 'id']
+['__tindex__', '#', 'id']
+```
+
+Table indexes can be more efficient than object indexes, but they require more work to maintain.
+
+
+```javascript
+const book = {
+    id: `Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a`,
+    title: 'The Hobbit',
+    author: 'J.R.R. Tolkien',
+    pubisher: {
+        name: 'Houghton Mifflin',
+        location: 'Boston'
+    }
+}
+// object index entries
+['__oindex__', 'title', 'The Hobbit', 'Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
+['__oindex__', 'author', 'J.R.R. Tolkien', 'Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
+['__oindex__', 'pubisher', 'name','Houghton Mifflin','Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
+['__oindex__', 'pubisher','location', 'Boston','Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
+// table index entries
+['__tindex__', 'title', 'The Hobbit', 'Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
+['__tindex__', 'author', 'J.R.R. Tolkien', 'Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
+['__tindex__', 'pubisher.name','Houghton Mifflin','Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
+['__tindex__', 'pubisher.location', 'Boston','Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
+```
 
 # Operators
 
@@ -197,7 +279,7 @@ The following operators are supported in patterns.
 * `$includes(string)` - property value contains string
 * `$excludes(string)` - property value does not contain string
 * `$echoes(string)` - property value sounds like the `string`
-* `$distance([value:string|array,upperBound:number,?method:function=levenshteinDistance)` - ***BETA*** property value within `upperBound` distance to the `value`. See [Vector Search](#vector-search) for more information on `upperBound` and `method`.
+* `$soundsLike(string)` - alias for `$echoes`
 
 ## Arrays and Sets
 
@@ -252,6 +334,15 @@ Some unit tests in place. More to come, including coverage report.
 
 Until production release all versions will just have a tertiary version number.
 Beta will commence when unit test coverage first exceeds 90%.
+
+2023-06-26 v0.0.3 (Alpha)
+  - Added unit tests for operators
+  - Pulled operators into index.js and re-exported from there
+  - Corrected issue with table indexes on nested objects
+  - Optimizations for find on object indexes
+  - Updated usage example in documentation to ensure it would execute
+  - Added `autoIndex` option to `db.put`
+  - Enhanced documentation
 
 2023-06-25 v0.0.2 (Alpha)
 
