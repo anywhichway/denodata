@@ -13,14 +13,14 @@ function getKeys(key, value, schemaKeys, {indexType, cname, noTokens} = {}, {has
     const keyType = typeof (key);
     noTokens ||= this.indexOptions?.fulltext || this.indexOptions?.trigram;
     if (key && keyType === "object" && !Array.isArray(key)) {
-        return getKeys.call(this, [], key, value, schemaKeys);
+        return getKeys.call(this, [], key, null, schemaKeys);
     }
     const type = typeof (value);
     if (value && type === "object") {
         if (isRegExp(value) || value instanceof Date) {
             keys.push([...key, value])
         } else {
-            schemaKeys ||= cname ? Object.values(this.schema[cname].indexes).filter(index => index.type===indexType).map((index) => index.keys) : [];
+            schemaKeys ||= cname ? Object.values(this.schema[cname]?.indexes||{}).filter(index => index.type===indexType).map((index) => index.keys) : [];
             if (indexType === "object") {
                 for (const entry of Object.entries(value)) {
                     const regExp = toRegExp(entry[0]),

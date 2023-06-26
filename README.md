@@ -98,9 +98,9 @@ await (async () => {
 
 # Installation
 
-Not yet available on `deno.land/x`. For now, use: `import {Denobase,operators} from "https://unpkg.com/denobase";`
+Not yet available on `deno.land/x`. For now, use: `import {Denobase} from "https://unpkg.com/denobase";` and `import {operators} from "https://unpkg.com/denobase/operators";`
 
-Run deno with the `--allow-net` and  `--unstable` flags.
+Run Deno with the `--allow-net` and  `--unstable` flags.
 
 # API
 
@@ -338,6 +338,9 @@ Some unit tests in place.
 
 Until production release, all versions will just have a tertiary version number.
 Beta will commence when unit test coverage first exceeds 90%.
+
+2023-06-26 v0.0.5 (Alpha)
+  - Fixed issue with `db.getKeys` not returning too many keys for tables.
 
 2023-06-26 v0.0.4 (Alpha)
   - Added unit tests for patch and delete
