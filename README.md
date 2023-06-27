@@ -6,7 +6,7 @@ Both traditional table-oriented and object-oriented index approaches are support
 
 The standard `DenoKV` key-value functions remain available and are enhanced to support the indexing features.
 
-Support for automatic serialization and deserialization of class instances.
+Support for automatic serialization and deserialization of class instances and Date's as part of keys.
 
 A powerful `db.find` function that works on both indexes and regular keys with over 50 operators including RegExp, soundex/echoes, credit card, SSNs and more. If something is missing, it can be added in as little as one line.
 
@@ -197,6 +197,57 @@ Note:
 
 - Works like `DenoKV.set`. Does not manage indexes or do specialized serialization.
 
+# Key and Value Space
+
+## Keys
+
+Key parts are ordered lexicographically by their type (with the exception of Date), and within a given type, they are ordered by their value (including Dates). The ordering of types is as follows:
+
+- Uint8Array
+- string
+- number
+- bigint
+- boolean
+
+Within a given type, the ordering is:
+
+- Uint8Array: byte ordering of the array
+- string: byte ordering of the UTF-8 encoding of the string
+- number: -NaN < -Infinity < -1.0 < -0.5 < -0.0 < 0.0 < 0.5 < 1.0 < Infinity < NaN
+- bigint: mathematical ordering, largest negative number first, largest positive number last
+- boolean: false < true
+
+This means that the part 1.0 (a number) is ordered before the part 2.0 (also a number), but is greater than the part 0n (a bigint), because 1.0 is a number and 0n is a bigint, and type ordering has precedence over the ordering of values within a type.
+
+Dates in indexes are stored as strings with the form `@Date(milliseconds)`. This means that dates are ordered by their millisecond value. This will be transparent to most code because `db.set` and `db.get` have been customized to serialize and deserialize Dates.
+
+## Values
+
+Values in Denobase can be arbitrary JavaScript values that are compatible with the structured clone algorithm. This includes:
+
+- boolean
+- number
+- string
+- symbol
+- bigint
+- Uint8Array
+- Array
+- Object
+- Map
+- Set
+- Date
+- RegExp
+
+Unlike DenoKV, `undefined` and `null` are not valid values.
+
+Objects and arrays can contain any of the above types, including other objects and arrays. Maps and Sets can contain any of the above types, including other Maps and Sets.
+
+Unlike DenoKV, circular references within values are supported.
+
+Objects with non-primitive prototypes are supported when inserted via `db.put`. This is unlike DenoKV, which does not support objects with a non-primitive prototype.
+
+Functions cannot be serialized but symbols can (also an enhancement over DenoKV).
+
 # Index Structure
 
 The index structure is documented for convenience and will not be finalized until the final BETA release. At the moment the structure is easy to manage but quite large. It is RAM efficient, but read/write heavy. It is likely changes will be made to optimize for read/write at the expense of RAM.
@@ -330,17 +381,23 @@ The following operators are supported in patterns.
 
 Some unit tests in place.
 
-`index.js ... index.js ... 69.362% (446/643)`
+`index.js ... index.js ... ... 70.795% (463/654)`
 `operators.js ... 80.769% (294/364)`
-
 
 # Release History (Reverse Chronological Order)
 
 Until production release, all versions will just have a tertiary version number.
 Beta will commence when unit test coverage first exceeds 90%.
 
+2023-06-27 v0.0.6 (Alpha)
+  - More refinement to `db.getKeys`
+  - Fixes to `db.delete` by object reference
+  - Optimizations to serialization
+  - More unit tests
+  - Enhanced documentation
+
 2023-06-26 v0.0.5 (Alpha)
-  - Fixed issue with `db.getKeys` not returning too many keys for tables.
+  - Fixed issue with `db.getKeys` returning too many keys for table indexes
 
 2023-06-26 v0.0.4 (Alpha)
   - Added unit tests for patch and delete

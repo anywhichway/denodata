@@ -51,6 +51,26 @@ Deno.test("get primitive", async () => {
     expect(result.value).toEqual(1);
 })
 
+Deno.test("date key and value", async () => {
+    const now = new Date();
+    await db.set(now,now);
+    const entry = await db.get(now);
+    expect(entry.key[0]).toBeInstanceOf(Date);
+    expect(entry.value).toBeInstanceOf(Date);
+    expect(entry.key[0].getTime()).toEqual(entry.value.getTime());
+    expect(entry.key[0].getTime()).toEqual(now.getTime());
+})
+
+9007199254740991n
+Deno.test("bigint key and value", async () => {
+    const num = 9007199254740991n;
+    await db.set(num,num);
+    const entry = await db.get(num);
+    expect(entry.key[0]).toEqual(num);
+    expect(entry.value).toEqual(num);
+})
+
+
 Deno.test("patch non-object throws", async() => {
     await expect(db.patch(1)).rejects.toThrow();
 });
@@ -160,6 +180,15 @@ Deno.test("Find all", async () => {
     const results = await db.findAll();
     expect(results.length).toEqual(3);
 });
+
+Deno.test("delete by object", async () => {
+    const id = await db.put(new Book({title:"test","author":"test"})),
+        e1 = await db.get(id);
+    expect(e1.value instanceof Book).toEqual(true);
+    await db.delete(e1.value);
+    const e2 = await db.get(id);
+    expect(e2.value).toEqual(null);
+})
 Deno.test("patch", async (t) => {
     await t.step("find & patch",async () => {
         let results = await db.findAll({author: 'Laloux'},{cname:"Book"});

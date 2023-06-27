@@ -13,7 +13,7 @@ function getKeys(key, value, schemaKeys, {indexType, cname, noTokens} = {}, {has
     const keyType = typeof (key);
     noTokens ||= this.indexOptions?.fulltext || this.indexOptions?.trigram;
     if (key && keyType === "object" && !Array.isArray(key)) {
-        return getKeys.call(this, [], key, null, schemaKeys);
+        return getKeys.call(this, [], key, value, schemaKeys);
     }
     const type = typeof (value);
     if (value && type === "object") {
@@ -73,7 +73,7 @@ const deserializeSpecial = (key, value) => {
     const type = typeof (value);
     if (type === "string") {
         const number = value.match(/^@BigInt\((.*)\)$/);
-        if (number) return new BigInt(number[1]);
+        if (number) return BigInt(number[1]);
         const date = value.match(/^@Date\((.*)\)$/);
         if (date) return new Date(parseInt(date[1]));
         const regexp = value.match(/^@RegExp\((.*)\)$/);
@@ -148,21 +148,29 @@ const matchKeys = (pattern, target) => {
     })
 }
 
-const serializeSpecial = ({keepUndefined, keepRegExp} = {}) => (key, value) => {
-    if (key !== null && typeof (key) !== "string") return serializeSpecial({keepUndefined, keepRegExp})(null, key);
-    if (keepUndefined && key && value === undefined) return "@undefined";
+const serializeKey = (key,skip=["bigint"]) => {
+    return serializeSpecial(null,key,skip);
+}
+
+const serializeValue = (value,skip=["bigint",RegExp,Date]) => {
+    return serializeSpecial(null,value,skip);
+}
+
+const serializeSpecial = (key, value,skip=[]) => {
     const type = typeof (value);
+    if(skip.some((skipType)=>type===skipType || (value && type==="object" && typeof(skipType)==="function" && value instanceof skipType))) return value;
+    //if (key && value === undefined) return "@undefined";
     if (type === "symbol") return "@Symbol(" + value.toString() + ")";
-   // if (type === "bignint") return "@BigInt(" + value.toString() + ")";
+    if (type === "bigint") return "@BigInt(" + value.toString() + ")";
     if (value && type === "object") {
         if (value instanceof Date || value.constructor.name === "Date") return "@Date(" + value.getTime() + ")";
-        if (isRegExp(value)) return keepRegExp ? value : "@RegExp(" + value.toString() + ")";
+        if (isRegExp(value)) return value;// : "@RegExp(" + value.toString() + ")";
         //if (value instanceof Symbol) return "@Symbol(" + value.toString() + ")";
         const proto = Object.getPrototypeOf(value);
-        value = {...value};
+        value = structuredClone(value);
         Object.setPrototypeOf(value, proto);
         Object.entries(value).forEach(([key, data]) => {
-            value[key] = serializeSpecial({keepUndefined, keepRegExp})(key, data);
+            value[key] = serializeSpecial(key, data,skip);
         });
     }
     return value;
@@ -179,10 +187,10 @@ const toKey = (value) => {
     if(value && type==="object") {
         if(value instanceof Uint8Array) return [value];
         if(value instanceof Array) return value.map((item) => toKey(item)[0])
-        if(value instanceof Date) return [serializeSpecial()(null, value)];
-        if(isRegExp(value)) return [serializeSpecial()(null, value)];
+        if(value instanceof Date) return [serializeKey(value)];
+        if(isRegExp(value)) return [serializeKey(value)];
     } else if(type==="symbol") {
-        return [serializeSpecial()(null, value)];
+        return [serializeKey(value)];
     } else if(type==="boolean" || type==="number" || type==="string" || type==="bigint" || type==="function" || value===null) {
         return [value];
     }
@@ -281,10 +289,9 @@ const Denobase = async (options={}) => {
 
     const _delete = db.delete;
     db.delete = async function (value, {cname, indexOnly,find} = {}) {
-        let key = toKey(value);
         const type = typeof (value);
-        if (Array.isArray(value)) {
-            key = toPattern(key);
+        if (Array.isArray( value)) {
+            const key = toPattern(toKey(value));
             if (value.length === 1 && isId(value[0])) {
                 const entry = await this.get(value[0]);
                 if (entry.value != null) {
@@ -312,7 +319,7 @@ const Denobase = async (options={}) => {
                     await _delete.call(this, value);
                 }
             } else if(find && key.some((item) => item===undefined)) {
-                for await (const entry of this.find(value)) {
+                for await (const entry of this.find(value)) { // should value be key?
                     await _delete.call(this,entry.key);
                 }
             } else {
@@ -322,7 +329,7 @@ const Denobase = async (options={}) => {
             const id = value["#"];
             if (id) {
                 cname ||= getCname(id) || value.constructor.name;
-                value = serializeSpecial()(null, value);
+                value = serializeValue(value);
                 const indexes = [];
                 Object.values(this.schema[cname]?.indexes || {}).forEach(({type, keys}) => {
                     indexes.push({indexType: type, keys})
@@ -420,7 +427,7 @@ const Denobase = async (options={}) => {
                     }();
                 for await (const match of list) {
                     matchCount++;
-                    const id = isArray ? JSON.stringify(match.key) : (pattern ? match.key.pop() : match.key[0]);
+                    const id = isArray ? JSON.stringify(serializeKey(match.key,[])) : (pattern ? match.key.pop() : match.key[0]);
                     if (pattern) {
                         if(!isArray) {
                             match.key.shift();
@@ -462,13 +469,13 @@ const Denobase = async (options={}) => {
         const entries = Object.entries(matches);
         for (let [key, hits] of entries) {
             if(isArray) {
-                key = JSON.parse(key);
+                key = deserializeSpecial(JSON.parse(key));
             }
             if (hits < threshold) {
                 continue;
             }
             if (currentOffset >= offset) {
-                const entry = deserializeSpecial(null, await db.get(key));
+                const entry = await db.get(key);
                 if (entry.value == null) { // should this be undefined?
                     await this.delete([key]); // database clean-up
                     continue;
@@ -519,12 +526,12 @@ const Denobase = async (options={}) => {
 
     const _get = db.get;
     db.get = async function (key) {
-        const result = await _get.call(this, toKey(key));
-        if(result.value && result.key.length===1 && isId(result.key[0]) && typeof(result.value) === "object") {
-            const ctor = this.schema[getCname(result.key[0])]?.ctor;
-            if(ctor) result.value = Object.assign(Object.create(ctor.prototype),result.value);
+        const entry = deserializeSpecial(null,await _get.call(this, toKey(key)));
+        if(entry.value && entry.key.length===1 && isId(entry.key[0]) && typeof(entry.value) === "object") {
+            const ctor = this.schema[getCname(entry.key[0])]?.ctor;
+            if(ctor) entry.value = Object.assign(Object.create(ctor.prototype),entry.value);
         }
-        return result;
+        return entry;
     }
 
     db.patch = async function (value, {cname,pattern} = {}) {
@@ -533,7 +540,7 @@ const Denobase = async (options={}) => {
             throw new TypeError(`Can't patch non-object: ${value}.`);
         }
         if(value && type==="object") {
-            value = {...value}
+            value = structuredClone(value)
         }
         if(pattern) {
             for await(const entry of this.find(pattern,{cname})) {
@@ -551,7 +558,7 @@ const Denobase = async (options={}) => {
             }
             return;
         }
-        value = serializeSpecial()(value);
+        value = serializeValue(value);
         cname ||= getCname(value["#"]) || object.constructor.name;
         const indexes = [];
         Object.values(this.schema[cname]?.indexes || {}).forEach(({type, keys}) => {
@@ -587,15 +594,14 @@ const Denobase = async (options={}) => {
                 }
             }
             Object.assign(patched, value);
-            return await db.put(patched, {cname});  // should put inside a transaction
+            return await db.put(patched, {cname,patch:true});  // should put inside a transaction
         }
     }
 
-    db.put = async function (object, {cname, indexType, autoIndex,indexKeys} = {}) {
+    db.put = async function (object, {cname, indexType, autoIndex,indexKeys,patch} = {}) {
         if (!object || typeof (object) !== "object") {
             throw new TypeError(`Can't put non-object: ${object}. Do you mean to use set(key,value)?`);
         }
-        object = serializeSpecial()(object);
         cname ||= getCname(object["#"]) || object.constructor.name;
         const id = object["#"] ||= createId(cname),
             indexes = [];
@@ -604,21 +610,26 @@ const Denobase = async (options={}) => {
             indexType = "object";
         }
         if (indexType && indexKeys) {
-            indexes.push({indexType, indexKeys})
+            indexes.push({indexType, indexKeys, name:"dynamic"})
         } else {
-            Object.values(this.schema[cname]?.indexes || {}).forEach(({type, keys}) => {
-                if (!indexType || type === indexType) indexes.push({indexType: type, keys})
+            Object.values(this.schema[cname]?.indexes || {}).forEach(({type, keys,name}) => {
+                if (!indexType || type === indexType) indexes.push({indexType: type, keys,name})
             })
         }
         if (indexes.length === 0) {
             await this.set([id], object);
             return id;
         }
-        await this.delete([id], {indexOnly: true}); // clears all index entries
+        if(!patch) {
+            await this.delete([id], {indexOnly: true});
+        } // clears all index entries
         for (let i = 0; i < indexes.length; i++) {
-            let {indexType = "object", indexKeys} = indexes[i];
-            const keys = getKeys.call(this, object, indexKeys ? [indexKeys] : null, {indexType, cname}),
+            let {indexType = "object", indexKeys,name} = indexes[i];
+            const keys = serializeKey(getKeys.call(this, object, indexKeys ? [indexKeys] : null, {indexType, cname})),
                 indexPrefix = toIndexPrefix(indexType);
+            if(keys.some((key) => key.some((item)=>item==null))) {
+                throw new TypeError(`Can't index null or undefined value for keys ${JSON.stringify(indexKeys)} for index ${name} on object ${JSON.stringify(object)}`);
+            }
             let keyBatch = keys.splice(0, 10); // 10 is max changes in a transaction
             while (keyBatch.length > 0) {
                 const tn = this.atomic();
@@ -635,7 +646,7 @@ const Denobase = async (options={}) => {
 
     const _set = db.set;
     db.set = async function (key, value) {
-        return _set.call(this, toKey(key), value);
+        return _set.call(this, toKey(key), serializeValue(value));
     }
     return db;
 }
