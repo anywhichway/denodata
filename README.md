@@ -6,9 +6,11 @@ Both traditional table-oriented and object-oriented index approaches are support
 
 The standard `DenoKV` key-value functions remain available and are enhanced to support the indexing features.
 
-Support for automatic serialization and deserialization of class instances and Date's as part of keys.
+Support for automatic serialization and deserialization of class instances.
 
-A powerful `db.find` function that works on both indexes and regular keys with over 50 operators including RegExp, soundex/echoes, credit card, SSNs and more. If something is missing, it can be added in as little as one line.
+Support for and `Date`, `RegExp` and `symbol` as part of keys. Support for `symbol` as part of values.
+
+A powerful `db.find` function that works on both indexes and regular keys with over 50 operators including regular expressions, soundex/echoes, credit card, SSNs and more. If something is missing, it can be added in as little as one line.
 
 # Usage
 
@@ -201,10 +203,10 @@ Note:
 
 ## Keys
 
-Key parts are ordered lexicographically by their type (with the exception of Date), and within a given type, they are ordered by their value (including Dates). The ordering of types is as follows:
+Key parts are ordered lexicographically by their type (with the exception of `Date`, `RegExp` and `symbol`), and within a given type, they are ordered by their value (including Dates). The ordering of types is as follows:
 
 - Uint8Array
-- string
+- string (Date, RegExp, symbol)
 - number
 - bigint
 - boolean
@@ -219,7 +221,7 @@ Within a given type, the ordering is:
 
 This means that the part 1.0 (a number) is ordered before the part 2.0 (also a number), but is greater than the part 0n (a bigint), because 1.0 is a number and 0n is a bigint, and type ordering has precedence over the ordering of values within a type.
 
-Dates in indexes are stored as strings with the form `@Date(milliseconds)`. This means that dates are ordered by their millisecond value. This will be transparent to most code because `db.set` and `db.get` have been customized to serialize and deserialize Dates.
+`Date`, `RegExp`, `symbol` in indexes are stored as strings with the form `@<classname>(value)`. This means that they will order by their string representation. This will be transparent to most code because `db.set` and `db.get` have been customized to serialize and deserialize `Date` and `RegExp`.
 
 ## Values
 
@@ -242,7 +244,7 @@ Unlike DenoKV, `undefined` and `null` are not valid values.
 
 Objects and arrays can contain any of the above types, including other objects and arrays. Maps and Sets can contain any of the above types, including other Maps and Sets.
 
-Unlike DenoKV, circular references within values are supported.
+Unlike DenoKV, circular references within values are not supported.
 
 Objects with non-primitive prototypes are supported when inserted via `db.put`. This is unlike DenoKV, which does not support objects with a non-primitive prototype.
 
@@ -388,6 +390,11 @@ Some unit tests in place.
 
 Until production release, all versions will just have a tertiary version number.
 Beta will commence when unit test coverage first exceeds 90%.
+
+2023-06-28 v0.0.7 (Alpha)
+  - Fixed issue with serializing RegExp in keys
+  - Fixed issue with serializing symbols
+  - Fixed issue with patching when special value, e.g. Date, exists in index keys
 
 2023-06-27 v0.0.6 (Alpha)
   - More refinement to `db.getKeys`

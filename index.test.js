@@ -19,7 +19,9 @@ const books = [{
     author: 'Laloux',
     expires: Infinity,
     cost: NaN,
-    published: now
+    published: now,
+    aRegExp: /a/g,
+    aSymbol: Symbol("a")
 },{
     "#": uuidv4(),
     title: 'Creating Organizations',

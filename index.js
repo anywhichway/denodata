@@ -47,21 +47,18 @@ function getKeys(key, value, schemaKeys, {indexType, cname, noTokens} = {}, {has
             }
         }
     } else if (type === "string") {
-        if (isSpecial(value)) {
-            keys.push([...key, value])
-        } else if (noTokens) {
+        if (isSpecial(value) || noTokens) {
             keys.push([...key, value])
         } else {
             if (this?.indexOptions?.fulltext) {
                 tokenize(value).filter((token) => !STOPWORDS.includes(token)).forEach((token) => {
                     keys.push([...key, token])
                 })
-            }
-            if (!this?.indexOptions?.fulltext && !this.indexOptions?.trigram) {
-                keys.push([...key, value])
+            } else if (!this.indexOptions?.trigram) {
+                keys.push([...key, value]); // what happens if trigram is true?
             }
         }
-    } else { //if(!schemaKeys || hasRegExp || schemaKeys.includes(key.join("."))) {
+    } else {
         keys.push([...key, value])
     }
     return keys;
@@ -81,7 +78,7 @@ const deserializeSpecial = (key, value) => {
             const li = regexp[1].lastIndexOf("/"),
                 str = regexp[1].substring(1, li),
                 flags = regexp[1].substring(li + 1);
-            return new RegExp(str, flags)
+            return new RegExp(str, flags);
         }
         ;
         const symbol = value.match(/^@Symbol\((.*)\)$/);
@@ -97,7 +94,7 @@ const deserializeSpecial = (key, value) => {
 }
 
 const isSpecial = (value) => {
-    const specials = ["@undefined", "@Infinity", "@-Infinity", "@NaN"];
+    const specials = ["@undefined"];
     return specials.includes(value) || value.match(/@.*\(.*\)/)
 }
 
@@ -157,21 +154,29 @@ const serializeValue = (value,skip=["bigint",RegExp,Date]) => {
 }
 
 const serializeSpecial = (key, value,skip=[]) => {
+    if(Array.isArray(value)) {
+        if(value instanceof Uint8Array) return value;
+        return value.map((item,i)=>serializeSpecial(i,item,skip));
+    }
     const type = typeof (value);
     if(skip.some((skipType)=>type===skipType || (value && type==="object" && typeof(skipType)==="function" && value instanceof skipType))) return value;
     //if (key && value === undefined) return "@undefined";
-    if (type === "symbol") return "@Symbol(" + value.toString() + ")";
+    if (type === "symbol") return "@" + value.toString();
     if (type === "bigint") return "@BigInt(" + value.toString() + ")";
     if (value && type === "object") {
         if (value instanceof Date || value.constructor.name === "Date") return "@Date(" + value.getTime() + ")";
-        if (isRegExp(value)) return value;// : "@RegExp(" + value.toString() + ")";
-        //if (value instanceof Symbol) return "@Symbol(" + value.toString() + ")";
+        if (isRegExp(value)) return "@RegExp(" + value.toString() + ")";
         const proto = Object.getPrototypeOf(value);
-        value = structuredClone(value);
+        try {
+            value = structuredClone(value);
+        } catch(e) {
+            value = {...value};
+            // what about Set and Map
+            Object.entries(value).forEach(([key, data]) => {
+                value[key] = serializeSpecial(key, data,skip);
+            });
+        }
         Object.setPrototypeOf(value, proto);
-        Object.entries(value).forEach(([key, data]) => {
-            value[key] = serializeSpecial(key, data,skip);
-        });
     }
     return value;
 }
@@ -540,7 +545,11 @@ const Denobase = async (options={}) => {
             throw new TypeError(`Can't patch non-object: ${value}.`);
         }
         if(value && type==="object") {
-            value = structuredClone(value)
+            try {
+                value = structuredClone(value);
+            } catch(e) {
+                Array.isArray(value) ? [...value] : {...value}; // should be deep copy?
+            }
         }
         if(pattern) {
             for await(const entry of this.find(pattern,{cname})) {
@@ -579,7 +588,7 @@ const Denobase = async (options={}) => {
                         if (newIndexKeys.some((newKey) => matchKeys(oldKey, newKey))) {
                             return removeKeys;
                         }
-                        removeKeys.push(oldKey);
+                        removeKeys.push(serializeKey(oldKey));
                         return removeKeys;
                     }, []),
                     indexPrefix = toIndexPrefix(indexType);
