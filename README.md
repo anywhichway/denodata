@@ -8,7 +8,7 @@ The standard `DenoKV` key-value functions remain available and are enhanced to s
 
 Support for automatic serialization and deserialization of class instances.
 
-Support for and `Date`, `RegExp` and `symbol` as part of keys. Support for `symbol` as part of values.
+Support for `Date`, `RegExp` and `symbol` as part of keys. Support for `symbol` as part of values.
 
 A powerful `db.find` function that works on both indexes and regular keys with over 50 operators including regular expressions, soundex/echoes, credit card, SSNs and more. If something is missing, it can be added in as little as one line.
 
@@ -100,7 +100,12 @@ await (async () => {
 
 # Installation
 
-Not yet available on `deno.land/x`. For now, use: `import {Denobase} from "https://unpkg.com/denobase";` and `import {operators} from "https://unpkg.com/denobase/operators";`
+Not yet available on `deno.land/x`. For now, use: 
+
+```javascript
+import {Denobase} from "https://unpkg.com/denobase";` 
+import {operators} from "https://unpkg.com/denobase/operators";
+```
 
 Run Deno with the `--allow-net` and  `--unstable` flags.
 
@@ -108,7 +113,7 @@ Run Deno with the `--allow-net` and  `--unstable` flags.
 
 `db Denobase(options={})`
 
-- Returns a new `Denobase` instance.
+- Returns an enhanced `DenoKV`.
 
 - `options` is reserved for future use.
 
@@ -124,11 +129,11 @@ Note:
 
 - If `keyOrPattern` is a primitive, UInt8Array, or valid DenoKV key, the record is deleted.
 
-- If `keyOrPattern` is an array, but not a valid DenoKV and `find` is true, `db.find` is used to find matches and they are deleted. The `find` flag is used to prevent deletion when an invalid DenoKV key is accidentally passed. 
+- If `keyOrPattern` is an array, but not a valid DenoKV key and `find` is true, `db.find` is used with the array as a pattern. Yielded values are deleted. The `find` flag is used to prevent deletion when an invalid DenoKV key is accidentally passed. 
 
 - If `keyOrPattern` is an object with an id, the id is used to delete the object.
 
-- If `keyOrPattern` is an object without an id and find is `true`, `db.find` is used to find matches and they are deleted.
+- If `keyOrPattern` is an object without an id and find is `true`, `db.find` is used with the object as a pattern. Yielded values are deleted.
 
 - If `cname` is specified and `keyOrPattern` is a POJO, it is treated like an instance of `cname`. 
 
@@ -153,25 +158,25 @@ Note:
 
 - `pattern` can be an array or an object. If it is an array, it is treated similar to a DenoKV key, except additional pattern matching semantics below apply.  If it is an object, it is converted into a collection of keys for matching against indexes.
 
-- If `pattern` is a POJO, the `cname` parameter can be used to treat it like a class. If `pattern` is an object and `cname` is not specified, the `cname` the `constructor.name` property of the object, unless it is a POJO, in which case a cross class search is conducted.
+- If `pattern` is a POJO, the `cname` parameter can be used to treat it like a class. If `pattern` is an object and `cname` is not specified, the `cname` defaults to the `constructor.name` of the object, unless it is a POJO, in which case a cross class search is conducted.
 
 - The key pattern matching semantics are as follows:
 
     - A `null` pattern matches all records.
-    - Any element of a pattern key that is not a valid DenoKV key component is treated as a wildcard and for a lower bounds replaced with `UInt8Array([])` and `true` for upper bounds.
+    - Any element of a pattern key that is not a valid DenoKV key component is treated as a wildcard with a lower bound of `UInt8Array([])`. Since bounds are non-inclusive, `true` is not the upper bound; rather, the key is extended one element with a value of `UInt8Array([])`.
     - The DenoKV `list` function is called with the pattern(s) to get the initial set(s) of keys.
     - The associated sets of keys are intersected to get the final set of keys.
-    - The final set of keys is filtered to ensure that the keys match the pattern(s) exactly, e.g. functions in the pattern(s) are used to test the key part at the same index.
+    - The final set of keys is filtered to ensure that the keys match the original pattern(s) exactly, e.g. functions and RegExp or special literals, e.g. Dates, in the pattern(s) are used to test the key part at the same index.
     - The values associated with the keys are retrieved from the database.
   
-- If `valueMatch` is specified, it is used to filter the resulting entries. The semantics are as follows:
+- If the optional `valueMatch` is specified, it is used to filter the resulting entries. The semantics are as follows:
 
   - If it is a function, it is called with the entry value and any return value that is not `undefined` is used as the result.
   - If it is an object, each property in the `valueMatch`, including nested properties, is found in the value and is tested using the literal value, function, or RegExp in the corresponding property of the pattern. If a function returns anything other than `undefined` the match is successful and the result is used as the property value. If a property value fails the match, the object is discarded.
 
 - If `minScore` is specified, it should be a number between 0 and 1 that represents the percentage of the pattern that needs to match.
 
-- `limit` defaults to `Infinity` and limits the number of entries returned.
+- `limit` limits the number of entries returned and defaults to `Infinity`.
 
 - `offset` indicates how many entries to skip before returning results.
 
@@ -244,7 +249,7 @@ Unlike DenoKV, `undefined` and `null` are not valid values.
 
 Objects and arrays can contain any of the above types, including other objects and arrays. Maps and Sets can contain any of the above types, including other Maps and Sets.
 
-Unlike DenoKV, circular references within values are not supported.
+Unlike DenoKV, circular references within values are not officially supported.
 
 Objects with non-primitive prototypes are supported when inserted via `db.put`. This is unlike DenoKV, which does not support objects with a non-primitive prototype.
 
@@ -390,6 +395,9 @@ Some unit tests in place.
 
 Until production release, all versions will just have a tertiary version number.
 Beta will commence when unit test coverage first exceeds 90%.
+
+2023-06-30 v0.0.8 (Alpha)
+  - Enhanced documentation
 
 2023-06-28 v0.0.7 (Alpha)
   - Fixed issue with serializing RegExp in keys
