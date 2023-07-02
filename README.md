@@ -4,7 +4,7 @@ A Deno native indexed database. Backed by the `DenoKV` store it has zero externa
 
 Both traditional table-oriented and object-oriented index approaches are supported and can be mixed and matched.
 
-The standard `DenoKV` key-value functions remain available and are enhanced to support the indexing features.
+The standard `DenoKV` key-value functions remain available and are enhanced to support the indexing and metadata features.
 
 Support for automatic serialization and deserialization of class instances.
 
@@ -70,12 +70,12 @@ class Book {
 }
 await db.createIndex({indexType:"object",ctor:Book,keys:["author","title","publisher"]});
 await db.createIndex({indexType:"table",ctor:Book,keys:["author","title","publisher.name"]});
-await db.put(new Book("John Doe", "My Life","ACME, Inc"));
+await db.put(new Book("John Doe", "My Life","ACME, Inc"),{metadata:{expires:Date.now()+1000*60*60*24*30}});
 await (async () => {
   for await (const {key,value,version,score,count,offsetCount,totalCount} of db.find(
           {author:"John Doe",title:"My Life"},// partial match pattern
           {cname:"Book",indexName:"author_title_publisher.name"})) { // use the table index
-    console.log(value); // prints Book instance
+    console.log(value); // prints Book instance, so long as record has not expired
   }
 })();
 await (async () => {
@@ -117,11 +117,13 @@ Run Deno with the `--allow-net` and  `--unstable` flags.
 
 - `options` is reserved for future use.
 
-Note:
+Notes:
 
 - Keys in `denobase` can be any value that is a valid `DenoKV` key component, or they can be a `DenoKV` key. If they are not a `DenoKV` key, they are automatically converted into the arrays normally used by `DenoKV`. For example `"mykey"` is the same as `["mykey"]`.
 
 - Object ids are stored in the property `#`. This will be made configurable in a future release.
+
+- several methods take a `metadata` parameter. This can contain any metadata you want to associate with the record, e.g. person that created the record. It can also contain an `expires` property. If `expires` is a number it represents the number of milliseconds in the future. If `expires` is a `Date` it is the datetime the record expires. For compliance and resource management reasons it is important to know that deletion actually occurs when an attempt is made to retrieve the record. There is no deameon that constantly purges the database. Metadata is automatically indexed when using object indexes.
 
 `void db.delete(keyOrPattern:primitive|UInt8Array|array|object,{?cname:string,?indexOnly:bool,?find:boolean})`
 
@@ -184,15 +186,16 @@ Note:
 
 - Works like `DenoKV.get` except that if the entry value is a class instance saved using `db.put`, it is automatically deserialized and instantiated.
 
-`Entry db.patch(value:object|function,{?cname:string,?pattern:array|object})`
+`Entry db.patch(value:object|function,{?cname:string,?metadata:object,?pattern:array|object})`
 
 - If value is an object and `pattern` is not provided, `db.patch` finds the object in the database based on its id, applies the changes, updates indexes, and saves the object.
 - If `pattern` is provided, it is used as an argument to `db.find` and all matching entries are updated using `value`. If `value` is a primitive, it is used as the new value. If it is an object, it is merged with the existing value. If it is a function, it is called with the existing value and the return value is used as the new value. If the function returns `undefined`, the value is not changed.
 - Using `undefined` as a property or a sub-property of `value` deletes the property.
 - If value is an object and it does not exist, it is created.
 - If `cname` is provided, the object is treated as an instance of `cname`.
+- If `metadata` is provided, it is merged with the existing metadata.
 
-`void db.put(object,{?cname:string,?autoIndex:boolean})` 
+`void db.put(object,{?cname:string,?metadata:object,?autoIndex:boolean})` 
 
 - Takes an object, assigns an id if necessary, populates/updates indexes, and serializes then saves the object using the id as the key.
 - If `cname` is provided, the object is treated as an instance of `cname`.
@@ -200,9 +203,10 @@ Note:
 
 - `Denobase` serializes `bigints`, `symbols`, `Dates`, and `RegExp` so that they can be restored.
 
-`void db.set(key,value)`
+`void db.set(key:primitive|DenoKV Key,value:any,?metadata:object)`
 
 - Works like `DenoKV.set`. Does not manage indexes or do specialized serialization.
+- See notes at start of API section regarding `key` and `value` types.
 
 # Key and Value Space
 
@@ -394,7 +398,10 @@ Some unit tests in place.
 # Release History (Reverse Chronological Order)
 
 Until production release, all versions will just have a tertiary version number.
-Beta will commence when unit test coverage first exceeds 90%.
+Beta will commence when unit test coverage first exceeds 90% and the API is stable.
+
+2023-07-02 v0.0.9 (Alpha)
+  - Added support for metadata and record expiration
 
 2023-06-30 v0.0.8 (Alpha)
   - Enhanced documentation

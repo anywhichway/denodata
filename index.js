@@ -532,17 +532,26 @@ const Denobase = async (options={}) => {
     const _get = db.get;
     db.get = async function (key) {
         const entry = deserializeSpecial(null,await _get.call(this, toKey(key)));
-        if(entry.value && entry.key.length===1 && isId(entry.key[0]) && typeof(entry.value) === "object") {
-            const ctor = this.schema[getCname(entry.key[0])]?.ctor;
-            if(ctor) entry.value = Object.assign(Object.create(ctor.prototype),entry.value);
+        if(entry.value) {
+            entry.metadata = entry.value.metadata;
+            if(entry.metadata?.expires && entry.metadata.expires < Date.now()) {
+                await this.delete(key);
+                return {key, value:undefined};
+            }
+            if (entry.key.length === 1 && isId(entry.key[0]) && typeof (entry.value.data) === "object") {
+                const ctor = this.schema[getCname(entry.key[0])]?.ctor;
+                if (ctor) entry.value = Object.assign(Object.create(ctor.prototype), entry.value.data);
+            } else {
+                entry.value = entry.value.data;
+            }
         }
         return entry;
     }
 
-    db.patch = async function (value, {cname,pattern} = {}) {
+    db.patch = async function (value, {cname,pattern,metadata} = {}) {
         const type = typeof (value);
-        if (!pattern && (!value || type !== "object")) {
-            throw new TypeError(`Can't patch non-object: ${value}.`);
+        if (value && type==="object" && !(value["#"] || pattern)) {
+            throw new TypeError(`Can't patch non-object or object without id key if there is no pattern.`);
         }
         if(value && type==="object") {
             try {
@@ -554,26 +563,26 @@ const Denobase = async (options={}) => {
         if(pattern) {
             for await(const entry of this.find(pattern,{cname})) {
                 if(type==="object") {
-                    value["#"] = entry.key;
-                    await this.patch(value, {cname});
+                    await this.patch(entry.value, {cname,metadata});
                 } else if(type==="function") {
                     const newValue = value(entry.value);
                     if(newValue!==undefined) {
-                        await this.set(entry.key,newValue);
+                        await this.set(entry.key,newValue,{metadata});
                     }
                 } else {
-                    this.set(entry.key, value);
+                    this.set(entry.key, value,{metadata});
                 }
             }
             return;
         }
+        if(metadata) value["^"] = metadata;
         value = serializeValue(value);
-        cname ||= getCname(value["#"]) || object.constructor.name;
+        cname ||= getCname(value["#"]);
         const indexes = [];
         Object.values(this.schema[cname]?.indexes || {}).forEach(({type, keys}) => {
             indexes.push({indexType: type, keys})
         })
-        const id = value["#"] ||= createId(cname),
+        const id = value["#"],
             entry = await this.get([id]),
             patched = entry.value || {};
         if (indexes.length === 0) {
@@ -602,18 +611,26 @@ const Denobase = async (options={}) => {
                     keys = removeKeys.splice(0, 10);
                 }
             }
+            if(metadata) { // prepare to patch metadata separately
+                delete value["^"];
+            }
             Object.assign(patched, value);
+            if(metadata) { // patch metadata separately
+                patched["^"] ||= {};
+                Object.assign(patched["^"], metadata);
+            }
             return await db.put(patched, {cname,patch:true});  // should put inside a transaction
         }
     }
 
-    db.put = async function (object, {cname, indexType, autoIndex,indexKeys,patch} = {}) {
+    db.put = async function (object, {cname, metadata,indexType, autoIndex,indexKeys,patch} = {}) {
         if (!object || typeof (object) !== "object") {
             throw new TypeError(`Can't put non-object: ${object}. Do you mean to use set(key,value)?`);
         }
         cname ||= getCname(object["#"]) || object.constructor.name;
         const id = object["#"] ||= createId(cname),
             indexes = [];
+        if(metadata) object["^"] = metadata;
         if(autoIndex && !indexKeys && indexType!=="table") {
             indexKeys = Object.keys(object);
             indexType = "object";
@@ -654,8 +671,15 @@ const Denobase = async (options={}) => {
     }
 
     const _set = db.set;
-    db.set = async function (key, value) {
-        return _set.call(this, toKey(key), serializeValue(value));
+    db.set = async function (key, value,metadata) {
+        value = {data:value,metadata:metadata||value["^"]};
+        const type = typeof(value.metadata?.expires);
+        if(type==="number") {
+            value.metadata.expires = new Date(Date.now()+value.metadata.expires);
+        } else if(value.metadata?.expires && !(type==="object" && value.metadata.expires instanceof Date)) {
+            throw new TypeError(`Expires value must be number of milliseconds or Date: ${value.metadata.expires}`);
+        }
+        return _set.call(this, toKey(key),serializeValue(value));
     }
     return db;
 }

@@ -174,6 +174,8 @@ Deno.test("Min score", async () => {
     expect(results[0].value.title).toEqual("Reinventing Organizations");
     expect(results[0].score).toEqual(.5);
 });
+
+// this test will occasionally fail for unknown reasons
 Deno.test("All books", async () => {
     const results = await db.findAll(null,{cname:"Book"});
     expect(results.length).toEqual(2);
@@ -218,5 +220,29 @@ Deno.test("patch with find", async (t) => {
     await t.step("verify",async () => {
         const entry = await db.get(1);
         expect(entry.value).toEqual(2);
+    })
+})
+
+Deno.test("expire immediately", async (t) => {
+    await t.step("set",async () => {
+        await db.set(1,1,{expires:1});
+    })
+    await t.step("verify",async () => {
+        const entry = await db.get(1);
+        expect(entry.value===undefined).toEqual(true);
+    })
+})
+Deno.test("expire later", async (t) => {
+    await t.step("set",async () => {
+        await db.set(1,1,{expires:1000});
+    })
+    await t.step("verify",async () => {
+        const entry = await db.get(1);
+        expect(entry.value).toEqual(1);
+    })
+    await t.step("verify",async () => {
+        await new Promise((resolve) => setTimeout(resolve,1001));
+        const entry = await db.get(1);
+        expect(entry.value===undefined).toEqual(true);
     })
 })
