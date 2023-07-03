@@ -1,4 +1,4 @@
-import {DONE} from "./operators.js"
+import {DONE} from "./constants.js"
 const getValue = (key, data) => {
     const keys = key.split(".");
     let result = data;
@@ -145,20 +145,21 @@ const matchKeys = (pattern, target) => {
 }
 
 const selector = (value,pattern,{root=value,parent,key}={}) => {
-    const type = typeof(pattern);
-    if(type==="function") {
+    const ptype = typeof(pattern),
+        vtype = typeof(value);
+    if(ptype==="function") {
         return pattern(value,{root,parent,key});
     }
-    if(value && type==="object") {
+    if(value && ptype==="object") {
         if(isRegExp(pattern)) {
-            if(typeof(value)==="string") {
+            if(vtype==="string") {
                 const matches = value.match(pattern)||[];
                 return matches[1];
             }
             return;
         }
         if(pattern instanceof Date) {
-            return value && type==="object" && pattern.getTime()===value.getTime() ? value : undefined;
+            return value && vtype==="object" && value instanceof Date && pattern.getTime()===value.getTime() ? value : undefined;
         }
         for(const key in value) {
             if(!Object.keys(pattern).some((pkey)=> {
@@ -194,6 +195,7 @@ const selector = (value,pattern,{root=value,parent,key}={}) => {
         }
         return value;
     }
+    if(ptype==="number" && vtype==="number" && isNaN(pattern) && isNaN(value)) return value;
     return pattern===value ? value : undefined;
 }
 
@@ -308,14 +310,14 @@ const Denobase = async (options={}) => {
         cname ||= title;
         title ||= cname;
         if (this.schema[cname]) throw new Error("Schema already exists");
-        ctor ||= new Function(`return function ${name}(data) { return Object.assign(this,data); }`)();
+        ctor ||= new Function(`return function ${cname}(data) { return Object.assign(this,data); }`)();
         this.schema[cname] = {cname, ctor, primaryKey, indexes, $schema, $id, title, decription, properties, required};
     }
 
     db.createIndex = async function ({name, indexType, ctor,cname,keys}) {
         if (!keys || !Array.isArray(keys) || !keys.length) throw new Error("Index must have at least one key");
         name ||= keys.join("_");
-        if(!cname && !ctor) throw new Error("Either cname or ctor must be provided when creating an index")
+        if(!cname && !ctor) throw new Error("Either cname or ctor must be provided when creating an index");
         cname ||= ctor?.name;
         this.schema[cname] ||= {primaryKey: "#", indexes: {}};
         this.schema[cname].ctor ||= ctor || new Function(`return function ${cname}(data) { return Object.assign(this,data); }`)();
@@ -330,12 +332,12 @@ const Denobase = async (options={}) => {
         return this.schema[cname].indexes[name];
     }
 
-    db.transaction = async function (f) {
+    /*db.transaction = async function (f) {
         const tn = this.atomic(),
             result = await f.call(this, tn);
         await tn.commit();
         return result;
-    }
+    }*/
 
     db.clear = async function () {
         for await(const {key} of db.list({start: [new Uint8Array([])], end: [true]})) {

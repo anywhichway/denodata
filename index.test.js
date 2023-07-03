@@ -37,7 +37,24 @@ const books = [{
 await db.clear();
 await db.set(1,1);
 await db.set(false,false);
-Deno.test("create Index", async () => {
+
+Deno.test("createIndex throws for no keys", async () => {
+    try {
+        await db.createIndex({indexType:"table",cname:"Book",ctor:Book})
+    } catch(e) {
+        return;
+    }
+    throw new Error("error expected")
+});
+Deno.test("createIndex throws for no cname or ctor", async () => {
+    try {
+        await db.createIndex({indexType:"table",keys:["a"]})
+    } catch(e) {
+        return;
+    }
+    throw new Error("error expected")
+});
+Deno.test("createIndex", async () => {
     const i1 = await db.createIndex({indexType:"table",cname:"Book",ctor:Book,keys:["author","title"]}),
         i2 = await db.createIndex({indexType:"object",cname:"Book",ctor:Book,keys:Object.keys(books[0])});
     expect(Object.keys(db.schema.Book.indexes).length).toEqual(2);
@@ -47,6 +64,23 @@ Deno.test("create Index", async () => {
         await db.put(book);
     }
 });
+
+Deno.test("createSchema throws for existing", async () => {
+    try {
+        await db.createSchema({cname:"Book"})
+    } catch(e) {
+        return;
+    }
+    throw new Error("error expected")
+})
+Deno.test("createSchema automatic ctor", async () => {
+    await db.createSchema({cname:"Test1"});
+    expect(typeof(db.schema.Test1.ctor)).toEqual("function");
+})
+Deno.test("createSchema has ctor", async () => {
+    await db.createSchema({cname:"Test2",ctor:function() {}});
+    expect(typeof(db.schema.Test2.ctor)).toEqual("function");
+})
 
 Deno.test("get primitive", async () => {
     const result = await db.get(1);
@@ -131,11 +165,17 @@ Deno.test("partial object index match with valueMatch function", async () => {
     expect(results[0].value.title).toEqual("Reinventing Organizations");
     expect(results[0].value.author).toEqual("Laloux");
 });
-Deno.test("partial object index match with select object transform", async () => {
-    const results = await db.findAll({title: 'Reinventing Organizations'},{select:{author:(value)=>value.toUpperCase()}});
+Deno.test("partial object index match with select object", async () => {
+    const results = await db.findAll({title: 'Reinventing Organizations'},{"#":now,aSymbol:"a",select:{[/title/]:/(.*)/,cost:NaN,expires:Infinity,published:now,aRegExp:(value)=>value,author:(value)=>value.toUpperCase()}});
     expect(results.length,1);
     expect(results[0].value instanceof Book).toEqual(true);
-    expect(results[0].value.title).toEqual(undefined);
+    expect(results[0].value["#"]).toEqual(undefined);
+    expect(results[0].value.aSymbol).toEqual(undefined);
+    expect(results[0].value.title).toEqual('Reinventing Organizations');
+    expect(results[0].value.expires).toEqual(Infinity);
+    expect(results[0].value.cost).toEqual(NaN);
+    expect(results[0].value.published).toEqual(now);
+    expect(results[0].value.aRegExp).toBeInstanceOf(RegExp);
     expect(results[0].value.author).toEqual("LALOUX");
 });
 
@@ -218,6 +258,23 @@ Deno.test("Find all", async () => {
     const results = await db.findAll();
     expect(results.length).toEqual(3);
 });
+Deno.test("Find throws for no cname", async () => {
+    try {
+        await db.findAll({},{indexName:"myindex"});
+    } catch(e) {
+        return;
+    }
+    throw new Error("error expected")
+});
+
+Deno.test("Find throws for bad pattern", async () => {
+    try {
+        await db.findAll(1);
+    } catch(e) {
+        return;
+    }
+    throw new Error("error expected")
+});
 
 Deno.test("delete by object", async () => {
     const id = await db.put(new Book({title:"test","author":"test"})),
@@ -227,6 +284,15 @@ Deno.test("delete by object", async () => {
     const e2 = await db.get(id);
     expect(e2.value).toEqual(null);
 })
+
+Deno.test("put non-object",async () => {
+    try {
+        await db.put(1);
+    } catch(e) {
+        return;
+    }
+    throw new Error("expected error")
+})
 Deno.test("patch", async (t) => {
     await t.step("find & patch",async () => {
         let results = await db.findAll({author: 'Laloux'},{cname:"Book"});
@@ -234,11 +300,12 @@ Deno.test("patch", async (t) => {
         expect(results[0].value.author).toEqual("Laloux");
         expect(results[0].value.title).toEqual("Reinventing Organizations");
         results[0].value.author = "LALOUX";
-        await db.patch(results[0].value);
+        await db.patch(results[0].value,{metadata:{test:1}});
         results = await db.findAll({author: 'LALOUX'},{cname:"Book"});
         expect(results.length).toEqual(1);
         expect(results[0].value.author).toEqual("LALOUX");
         expect(results[0].value.title).toEqual("Reinventing Organizations");
+        expect(results[0].metadata.test).toEqual(1);
     })
     await t.step("verify",async () => {
         const results = await db.findAll({author: 'Laloux'},{cname:"Book"});
@@ -256,6 +323,17 @@ Deno.test("patch with find", async (t) => {
         expect(entry.value).toEqual(2);
     })
 })
+
+Deno.test("patch throws for no pattern", async (t) => {
+    try {
+        await db.patch(1);
+    } catch(e) {
+        return;
+    }
+    throw new Error("expected error")
+})
+
+
 
 Deno.test("expire immediately", async (t) => {
     await t.step("set",async () => {
@@ -279,4 +357,12 @@ Deno.test("expire later", async (t) => {
         const entry = await db.get(1);
         expect(entry.value===undefined).toEqual(true);
     })
+})
+Deno.test("expire throws for typw", async (t) => {
+    try {
+        await db.set(1,1,{expires:"1"});
+    } catch(e) {
+        return;
+    }
+    throw new Error("expected error")
 })

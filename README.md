@@ -393,15 +393,19 @@ The following operators are supported in patterns.
 
 # Testing
 
-Some unit tests in place.
-
-`index.js ... index.js ... ... 70.795% (463/654)`
+`constants.js ... 100.000% (3/3)`
+`index.js ... index.js ... 80.946% (599/740)`
 `operators.js ... ... 95.330% (347/364)`
 
 # Release History (Reverse Chronological Order)
 
 Until production release, all versions will just have a tertiary version number.
 Beta will commence when unit test coverage first exceeds 90% and the API is stable.
+
+2023-07-03 v0.0.11 (Alpha)
+  - Moved constants to their own file
+  - Added unit tests
+  - Fixed issue with automatic generation of constructor based on cname
 
 2023-07-03 v0.0.10 (Alpha)
   - Enhanced documentation
