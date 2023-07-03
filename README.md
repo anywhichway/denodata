@@ -141,13 +141,14 @@ Notes:
 
 - If `indexOnly` is `true` and `keyOrPattern` is an object, only the index entries are deleted.
 
-`Entry *db.find(pattern:array|object,{?cname:string,?valueMatch:function|object,?minScore:number,?offset:number,?limit:number})`
+`Entry *db.find(pattern:array|object,{?cname:string,?valueMatch:function|object,?minScore:number,?select:function|object,?offset:number,?limit:number})`
 
 - `Entry` is an object, but not a formal class, with the following properties:
 
     - `key` - the key of the record
     - `value` - the value of the record
     - `version` - the version of the record
+    - `metadata` - the metadata object of the record, if any has ever been provided, e.g. `expires`
 
     The `value` property will be an instantiated class instance if the object was a class instance stored by `db.put`.
 
@@ -177,6 +178,8 @@ Notes:
   - If it is an object, each property in the `valueMatch`, including nested properties, is found in the value and is tested using the literal value, function, or RegExp in the corresponding property of the pattern. If a function returns anything other than `undefined` the match is successful and the result is used as the property value. If a property value fails the match, the object is discarded.
 
 - If `minScore` is specified, it should be a number between 0 and 1 that represents the percentage of the pattern that needs to match.
+
+- The optional `select` parameter can be used to modify the return value. It can be a function or an object. If it is a function, it is called with the entry value and the return value is used as the result. If it is an object, each property in the `select`, including nested properties, is used to test the same property in the entry value. If literals, RegExp, or Dates match, the property is included, if the select value is a function it is called with the entry value and defined return values are retained. If a property is not found, it is not included in the result.
 
 - `limit` limits the number of entries returned and defaults to `Infinity`.
 
@@ -393,12 +396,17 @@ The following operators are supported in patterns.
 Some unit tests in place.
 
 `index.js ... index.js ... ... 70.795% (463/654)`
-`operators.js ... 80.769% (294/364)`
+`operators.js ... ... 95.330% (347/364)`
 
 # Release History (Reverse Chronological Order)
 
 Until production release, all versions will just have a tertiary version number.
 Beta will commence when unit test coverage first exceeds 90% and the API is stable.
+
+2023-07-03 v0.0.10 (Alpha)
+  - Enhanced documentation
+  - Improved test coverage
+  - Added support for `select` option for `find`
 
 2023-07-02 v0.0.9 (Alpha)
   - Added support for metadata and record expiration

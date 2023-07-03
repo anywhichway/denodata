@@ -1,5 +1,5 @@
 import { expect } from "https://deno.land/x/expect@v0.2.1/mod.ts";
-import {rawOperators as operators,DONE} from './operators.js';
+import {rawOperators as operators,operators as functionalOperators,DONE} from './operators.js';
 
 const test = Deno.test.bind(Deno);
 test("$type",() => {
@@ -325,6 +325,29 @@ test("$mod",() => {
 test("$pow",() => {
     expect(operators.$pow(1, {test: [1, 1]})).toBe(1);
     expect(operators.$pow(1, {test: [1, 2]})).toBeUndefined();
+})
+
+test("$and",() => {
+    expect(functionalOperators.$and((v1,v2)=>v1==v2 ? v1 : undefined,true)(true, true)).toBe(true);
+    expect(functionalOperators.$and((v1,v2)=>v1==v2 ? v1 : undefined)(true,false)).toBeUndefined();
+    expect(functionalOperators.$and((v1,v2)=>v1==v2 ? v1 : undefined,false)(true, true)).toBeUndefined();
+})
+
+test("$or",() => {
+    expect(functionalOperators.$or((v1,v2)=>v1==v2 ? undefined : v1,true)(true, true)).toBe(true);
+    expect(functionalOperators.$or((v1,v2)=>undefined,false)(false, true)).toBe(true);
+})
+
+test("$ior",() => {
+    const op = functionalOperators.$ior((v1,v2)=>v1==v2 ? undefined : v1,true);
+    expect(op(true, true)).toBe(true);
+    expect(op.count).toBe(1);
+    expect(op.possibleCount).toBe(2);
+    expect(op.count/op.possibleCount).toBe(0.5);
+})
+test("$not",() => {
+    expect(functionalOperators.$not((v1,v2)=>v1==v2 ? v1 : undefined,true)(false, true)).toBe(true);
+    expect(functionalOperators.$not((v1,v2)=>v1==v2 ? v1 : undefined,true)(true,true)).toBeUndefined();
 })
 
 /*

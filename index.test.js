@@ -72,6 +72,12 @@ Deno.test("bigint key and value", async () => {
     expect(entry.value).toEqual(num);
 })
 
+Deno.test("RegExp value", async () => {
+    await db.set("regexp",/a/g);
+    const entry = await db.get("regexp");
+    expect(entry.value).toEqual(/a/g);
+    await db.delete("regexp");
+});
 
 Deno.test("patch non-object throws", async() => {
     await expect(db.patch(1)).rejects.toThrow();
@@ -110,6 +116,34 @@ Deno.test("partial object index match no cname", async () => {
     expect(results.length,1);
     expect(results[0].value instanceof Book).toEqual(true);
     expect(results[0].value.title).toEqual("Reinventing Organizations");
+});
+Deno.test("partial object index match with valueMatch object", async () => {
+    const results = await db.findAll({title: 'Reinventing Organizations'},{valueMatch:{author:"Laloux"}});
+    expect(results.length,1);
+    expect(results[0].value instanceof Book).toEqual(true);
+    expect(results[0].value.title).toEqual("Reinventing Organizations");
+    expect(results[0].value.author).toEqual("Laloux");
+});
+Deno.test("partial object index match with valueMatch function", async () => {
+    const results = await db.findAll({title: 'Reinventing Organizations'},{valueMatch:{author:(value)=>value==="Laloux" ? value : undefined}});
+    expect(results.length,1);
+    expect(results[0].value instanceof Book).toEqual(true);
+    expect(results[0].value.title).toEqual("Reinventing Organizations");
+    expect(results[0].value.author).toEqual("Laloux");
+});
+Deno.test("partial object index match with select object transform", async () => {
+    const results = await db.findAll({title: 'Reinventing Organizations'},{select:{author:(value)=>value.toUpperCase()}});
+    expect(results.length,1);
+    expect(results[0].value instanceof Book).toEqual(true);
+    expect(results[0].value.title).toEqual(undefined);
+    expect(results[0].value.author).toEqual("LALOUX");
+});
+
+Deno.test("partial object index match with select functional transform", async () => {
+    const results = await db.findAll({title: 'Reinventing Organizations'},{select:(value) => {return {author:value.author.toUpperCase()}}});
+    expect(results.length,1);
+    expect(results[0].value.title).toEqual(undefined);
+    expect(results[0].value.author).toEqual("LALOUX");
 });
 Deno.test("partial object index no match not indexed", async () => {
     const results = await db.findAll({title: 'Creating Organizations'});

@@ -1,4 +1,4 @@
-
+import {DONE} from "./operators.js"
 const getValue = (key, data) => {
     const keys = key.split(".");
     let result = data;
@@ -66,7 +66,6 @@ function getKeys(key, value, schemaKeys, {indexType, cname, noTokens} = {}, {has
 
 const deserializeSpecial = (key, value) => {
     if (key !== null && typeof (key) !== "string") return deserializeSpecial(null, key);
-    if (key && value === "@undefined") return;
     const type = typeof (value);
     if (type === "string") {
         const number = value.match(/^@BigInt\((.*)\)$/);
@@ -145,6 +144,59 @@ const matchKeys = (pattern, target) => {
     })
 }
 
+const selector = (value,pattern,{root=value,parent,key}={}) => {
+    const type = typeof(pattern);
+    if(type==="function") {
+        return pattern(value,{root,parent,key});
+    }
+    if(value && type==="object") {
+        if(isRegExp(pattern)) {
+            if(typeof(value)==="string") {
+                const matches = value.match(pattern)||[];
+                return matches[1];
+            }
+            return;
+        }
+        if(pattern instanceof Date) {
+            return value && type==="object" && pattern.getTime()===value.getTime() ? value : undefined;
+        }
+        for(const key in value) {
+            if(!Object.keys(pattern).some((pkey)=> {
+                const regExp = toRegExp(pkey);
+                return (regExp && regExp.test(key)) || pkey===key;
+            })) {
+                delete value[key];
+            }
+        }
+        for(const entry of Object.entries(pattern)) {
+            const key = entry[0],
+                regExp = toRegExp(key);
+            let result;
+            if(regExp) {
+                for(const [key,v] of Object.entries(value)) {
+                    if(regExp.test(key)) {
+                        result = selector(v,entry[1], {root, parent: value, key})
+                        if ([undefined,DONE].includes(result)) {
+                            delete value[key]
+                        } else {
+                            value[key] = result;
+                        }
+                    }
+                }
+            } else {
+                result = selector(value[key],entry[1], {root, parent: value, key});
+                if ([undefined,DONE].includes(result)) {
+                    delete value[key]
+                } else {
+                    value[key] = result;
+                }
+            }
+        }
+        return value;
+    }
+    return pattern===value ? value : undefined;
+}
+
 const serializeKey = (key,skip=["bigint"]) => {
     return serializeSpecial(null,key,skip);
 }
@@ -160,7 +212,6 @@ const serializeSpecial = (key, value,skip=[]) => {
     }
     const type = typeof (value);
     if(skip.some((skipType)=>type===skipType || (value && type==="object" && typeof(skipType)==="function" && value instanceof skipType))) return value;
-    //if (key && value === undefined) return "@undefined";
     if (type === "symbol") return "@" + value.toString();
     if (type === "bigint") return "@BigInt(" + value.toString() + ")";
     if (value && type === "object") {

@@ -1,7 +1,7 @@
 {
   "name": "denobase",
-  "version": "0.0.9",
-  "description": "Generalized indexing and search for Deno using Deno KV",
+  "version": "0.0.10",
+  "description": "Generalized indexing and search for Deno KV",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -18,7 +18,8 @@
     "search",
     "mongodb",
     "rocksdb",
-    "levelup"
+    "levelup",
+    "redis"
   ],
   "author": "Simon Y. Blackwell",
   "license": "MIT",
