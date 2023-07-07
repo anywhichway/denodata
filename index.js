@@ -68,6 +68,7 @@ const deserializeSpecial = (key, value) => {
     if (key !== null && typeof (key) !== "string") return deserializeSpecial(null, key);
     const type = typeof (value);
     if (type === "string") {
+        if(value==="@undefined") return undefined;
         const number = value.match(/^@BigInt\((.*)\)$/);
         if (number) return BigInt(number[1]);
         const date = value.match(/^@Date\((.*)\)$/);
@@ -200,23 +201,22 @@ const selector = (value,pattern,{root=value,parent,key}={}) => {
 }
 
 const serializeKey = (key,skip=["bigint"]) => {
+    key = Array.isArray(key) ? key.map((key) => Array.isArray(key) ? key.map((item) => item==null ? new Uint8Array([]) : item) : (key==null ? new Uint8Array([]) : key)) : key
     return serializeSpecial(null,key,skip);
 }
 
-const serializeValue = (value,skip=["bigint",RegExp,Date]) => {
+const serializeValue = (value,skip=["bigint",RegExp,Date,"undefined"]) => {
     return serializeSpecial(null,value,skip);
 }
 
 const serializeSpecial = (key, value,skip=[]) => {
-    if(Array.isArray(value)) {
-        if(value instanceof Uint8Array) return value;
-        return value.map((item,i)=>serializeSpecial(i,item,skip));
-    }
     const type = typeof (value);
     if(skip.some((skipType)=>type===skipType || (value && type==="object" && typeof(skipType)==="function" && value instanceof skipType))) return value;
     if (type === "symbol") return "@" + value.toString();
     if (type === "bigint") return "@BigInt(" + value.toString() + ")";
     if (value && type === "object") {
+        if(value instanceof Uint8Array) return value;
+        if(Array.isArray(value)) return value.map((item,i)=> serializeSpecial(i,item,skip));
         if (value instanceof Date || value.constructor.name === "Date") return "@Date(" + value.getTime() + ")";
         if (isRegExp(value)) return "@RegExp(" + value.toString() + ")";
         const proto = Object.getPrototypeOf(value);
@@ -232,6 +232,18 @@ const serializeSpecial = (key, value,skip=[]) => {
         Object.setPrototypeOf(value, proto);
     }
     return value;
+}
+
+const stringifyKey = (key) => {
+    return JSON.stringify(key.map((item) => {
+        return item && typeof(item)==="object" && item instanceof Uint8Array ? [...item] : item; // properly stringify Uint8Array
+    }))
+}
+
+const parseKey = (key) => {
+    return JSON.parse(key).map((item) => {
+        return Array.isArray(item) ? new Uint8Array(item) : item; // properly parse UInt8Array
+    })
 }
 
 const toIndexPrefix = (indexType) => {
@@ -384,6 +396,10 @@ const Denobase = async (options={}) => {
                 await _delete.call(this, value);
             }
         } else if (value && type === "object") {
+            if(value instanceof Uint8Array) {
+                await _delete.call(this, [value]);
+                return
+            }
             const id = value["#"];
             if (id) {
                 cname ||= getCname(id) || value.constructor.name;
@@ -393,7 +409,7 @@ const Denobase = async (options={}) => {
                     indexes.push({indexType: type, keys})
                 });
                 for (const {indexType, indexKeys} of indexes) {
-                    const keys = getKeys.call(this, value, indexKeys, {indexType, cname}),
+                    const keys = serializeKey(getKeys.call(this, value, indexKeys, {indexType, cname})),
                         indexPrefix = toIndexPrefix(indexType);
                     let keyBatch = keys.splice(0, 10); // 10 is max changes in a transaction
                     while (keyBatch.length > 0) {
@@ -435,7 +451,7 @@ const Denobase = async (options={}) => {
             throw new RangeError("cname must be specified when indexName is specified and pattern is a POJO");
         }
         if(pattern && !isArray && typeof(pattern) !== "object") {
-            throw new TypeErro("pattern must be one of: null, array or object")
+            throw new TypeError("pattern must be one of: null, array or object")
         }
         if(!cname && !isArray && indexName && pattern.constructor.name !== "Object") {
           cname = pattern.constructor.name;
@@ -444,7 +460,7 @@ const Denobase = async (options={}) => {
             isTable = indexType === "table",
             keys = indexName ? this.schema[cname].indexes[indexName]?.keys : null,
             // if pattern is an array then it is a key pattern, otherwise it is an object pattern
-            indexKeys = pattern ?  (Array.isArray(pattern) ? [pattern] : getKeys.call(this, pattern, keys ? [keys] : null, {indexType})) : [["#", (value) => value]],
+            indexKeys = pattern ?  (Array.isArray(pattern) ? [pattern] : getKeys.call(this, pattern, keys ? [keys] : null, {indexType,cname})) : [["#", (value) => value]],
             threshold = indexKeys.length * minScore || 0,
             indexPrefix = isArray ? null : toIndexPrefix(indexType);
         if (!isArray && !cname && pattern && pattern.constructor.name !== "Object") {
@@ -485,7 +501,7 @@ const Denobase = async (options={}) => {
                     }();
                 for await (const match of list) {
                     matchCount++;
-                    const id = isArray ? JSON.stringify(serializeKey(match.key,[])) : (pattern ? match.key.pop() : match.key[0]);
+                    const id = isArray ? stringifyKey(serializeKey(match.key,[])) : (pattern ? match.key.pop() : match.key[0]);
                     if (pattern) {
                         if(!isArray) {
                             match.key.shift();
@@ -527,14 +543,14 @@ const Denobase = async (options={}) => {
         const entries = Object.entries(matches);
         for (let [key, hits] of entries) {
             if(isArray) {
-                key = deserializeSpecial(JSON.parse(key));
+                key = deserializeSpecial(parseKey(key));
             }
             if (hits < threshold) {
                 continue;
             }
             if (currentOffset >= offset) {
                 const entry = await db.get(key);
-                if (entry.value == null) { // should this be undefined?
+                if (entry.value == null) {
                     await this.delete([key]); // database clean-up
                     continue;
                 }
@@ -585,7 +601,7 @@ const Denobase = async (options={}) => {
     const _get = db.get;
     db.get = async function (key) {
         const entry = deserializeSpecial(null,await _get.call(this, toKey(key)));
-        if(entry.value) {
+        if(entry.value!=null) {
             entry.metadata = entry.value.metadata;
             if(entry.metadata?.expires && entry.metadata.expires < Date.now()) {
                 await this.delete(key);
@@ -593,7 +609,7 @@ const Denobase = async (options={}) => {
             }
             if (entry.key.length === 1 && isId(entry.key[0]) && typeof (entry.value.data) === "object") {
                 const ctor = this.schema[getCname(entry.key[0])]?.ctor;
-                if (ctor) entry.value = Object.assign(Object.create(ctor.prototype), entry.value.data);
+                entry.value = ctor ? Object.assign(Object.create(ctor.prototype), entry.value.data) : entry.value.data;
             } else {
                 entry.value = entry.value.data;
             }
@@ -692,7 +708,7 @@ const Denobase = async (options={}) => {
             indexes.push({indexType, indexKeys, name:"dynamic"})
         } else {
             Object.values(this.schema[cname]?.indexes || {}).forEach(({type, keys,name}) => {
-                if (!indexType || type === indexType) indexes.push({indexType: type, keys,name})
+                if (!indexType || type === indexType) indexes.push({indexType: type, indexKeys:keys,name})
             })
         }
         if (indexes.length === 0) {
@@ -706,9 +722,9 @@ const Denobase = async (options={}) => {
             let {indexType = "object", indexKeys,name} = indexes[i];
             const keys = serializeKey(getKeys.call(this, object, indexKeys ? [indexKeys] : null, {indexType, cname})),
                 indexPrefix = toIndexPrefix(indexType);
-            if(keys.some((key) => key.some((item)=>item==null))) {
-                throw new TypeError(`Can't index null or undefined value for keys ${JSON.stringify(indexKeys)} for index ${name} on object ${JSON.stringify(object)}`);
-            }
+            //if(keys.some((key) => key.some((item)=>item==null))) {
+              //  throw new TypeError(`Can't index null or undefined value for keys ${JSON.stringify(indexKeys)} for index ${name} on object ${JSON.stringify(object)}`);
+            //}
             let keyBatch = keys.splice(0, 10); // 10 is max changes in a transaction
             while (keyBatch.length > 0) {
                 const tn = this.atomic();

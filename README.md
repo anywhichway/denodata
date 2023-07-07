@@ -394,13 +394,17 @@ The following operators are supported in patterns.
 # Testing
 
 `constants.js ... 100.000% (3/3)`
-`index.js ... index.js ... 80.946% (599/740)`
+`index.js ... index.js ...  84.656% (640/756)`
 `operators.js ... ... 95.330% (347/364)`
 
 # Release History (Reverse Chronological Order)
 
 Until production release, all versions will just have a tertiary version number.
 Beta will commence when unit test coverage first exceeds 90% and the API is stable.
+
+2023-07-07 v0.0.12 (Alpha)
+  - Added unit tests
+  - Fixed issues related to partial matching on table indexes
 
 2023-07-03 v0.0.11 (Alpha)
   - Moved constants to their own file
