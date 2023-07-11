@@ -15,12 +15,12 @@ class Book {
 const now = new Date();
 const books = [{
     "#": `Book@${uuidv4()}`,
+    aRegExp: /a/g,
     title: 'Reinventing Organizations',
     author: 'Laloux',
     expires: Infinity,
     cost: NaN,
     published: now,
-    aRegExp: /a/g,
     aSymbol: Symbol("a")
 },{
     "#": uuidv4(),
@@ -65,7 +65,7 @@ Deno.test("createIndex", async () => {
     expect(i1.type).toEqual("table");
     expect(i2.type).toEqual("object");
     for(const book of books) {
-        await db.put(book);
+        await db.put(book,{metadata:{expires:1000*60,created:new Date()}});
     }
 });
 
@@ -127,6 +127,30 @@ Deno.test("RegExp value", async () => {
     expect(entry.value).toEqual(/a/g);
     await db.delete("regexp");
 });
+
+Deno.test("RegExp key", async () => {
+    await db.set(/a/g,"regexp");
+    const entry = await db.get(/a/g);
+    expect(entry.value).toEqual("regexp");
+    await db.delete(/a/g);
+});
+
+Deno.test("Date value", async () => {
+    const now = new Date();
+    await db.set("adate",now);
+    const entry = await db.get("adate");
+    expect(entry.value.getTime()).toEqual(now.getTime());
+    await db.delete(now);
+});
+
+Deno.test("Date key", async () => {
+    const now = new Date();
+    await db.set(now,"adate");
+    const entry = await db.get(now);
+    expect(entry.value).toEqual("adate");
+    await db.delete(now);
+});
+
 
 Deno.test("patch non-object throws", async() => {
     await expect(db.patch(1)).rejects.toThrow();

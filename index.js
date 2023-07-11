@@ -400,6 +400,10 @@ const Denobase = async (options={}) => {
                 await _delete.call(this, [value]);
                 return
             }
+            if(value instanceof RegExp || value instanceof Date) {
+                await _delete.call(this, toKey(value));
+                return
+            }
             const id = value["#"];
             if (id) {
                 cname ||= getCname(id) || value.constructor.name;

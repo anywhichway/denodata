@@ -6,7 +6,7 @@ Both traditional table-oriented and object-oriented index approaches are support
 
 The standard `DenoKV` key-value functions remain available and are enhanced to support the indexing and metadata features.
 
-Support for automatic serialization and deserialization of class instances.
+Support for automatic serialization and deserialization of class instances, automatic expiration and developer defined metadata.
 
 Support for `Date`, `RegExp` and `symbol` as part of keys. Support for `symbol` as part of values.
 
@@ -26,7 +26,7 @@ const {key,value,version} = await db.get("mykey");
 await db.delete(["mykey"]);
 
 // Use simplified and extended DenoKV
-await db.set("mykey", "myvalue"); // primitves are automatically converted to arrays
+await db.set("mykey", "myvalue"); // primitve keys are automatically converted to arrays required by DenoKV
 await (async () => { const {key,value,version} = await db.get("mykey")})();
 await db.delete("mykey"); // using an array for the key is optional, autmatic conversion is done
 await db.clear(); // DenoKV does not provide a clear function.
@@ -85,14 +85,14 @@ await (async () => {
 })();
 await (async () => {
   for await (const {key, value, version, score} of db.find(
-          {author: "John Doe",title:"Another Life"},
+          {author: "John Doe",title:"Another Life"}, // only 50% of this pattern matches anything
           {minScore:.5,cname:"Book",indexType:"object"})) { // use object index (minScore is only supported for object indexes)
     console.log(value,score); // prints Book instance, less efficient, large index scans because of lack of cname
   }
 })();
 await (async () => {
   for await (const {key, value, version} of db.find(
-          {author: "John Doe"})) { // use object index since index name is not specified
+          {author: "John Doe"})) { // use object index across any class since cname and index name are not specified
     console.log(value); // prints Book instance, less efficient, large index scans because of lack of cname
   }
 })();
@@ -394,13 +394,18 @@ The following operators are supported in patterns.
 # Testing
 
 `constants.js ... 100.000% (3/3)`
-`index.js ... index.js ...  84.656% (640/756)`
+`index.js ... index.js ...  86.316% (656/760)
 `operators.js ... ... 95.330% (347/364)`
 
 # Release History (Reverse Chronological Order)
 
 Until production release, all versions will just have a tertiary version number.
 Beta will commence when unit test coverage first exceeds 90% and the API is stable.
+
+2023-07-11 v0.0.13 (Alpha)
+  - Added unit tests
+  - Fixed issue with Date and RegExp as keys
+  - Enhanced documentation
 
 2023-07-07 v0.0.12 (Alpha)
   - Added unit tests
