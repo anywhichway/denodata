@@ -248,7 +248,6 @@ const parseKey = (key) => {
 
 const toIndexPrefix = (indexType) => {
     const prefix = {object: "__oindex__", table: "__tindex__"}[indexType];
-    if (!prefix) throw new TypeError("Invalid index type");
     return prefix;
 }
 
@@ -372,13 +371,15 @@ const Denobase = async (options={}) => {
                             indexes.push({indexType: type, keys})
                         });
                     for (const {indexType, indexKeys} of indexes) {
-                        const keys = getKeys.call(this, entry.value, indexKeys, {indexType, cname}),
+                        const keys = serializeKey(getKeys.call(this, entry.value, indexKeys, {indexType, cname})),
                             indexPrefix = toIndexPrefix(indexType);
                         let keyBatch = keys.splice(0, 10); // 10 is max changes in a transaction
                         while (keyBatch.length > 0) {
                             const tn = this.atomic();
                             for (const key of keyBatch) {
-                                tn.delete([indexPrefix, ...key, id]);
+                                if(!key.some((item) => item==null)) {
+                                    tn.delete([indexPrefix, ...key, id]);
+                                }
                             }
                             await tn.commit();
                             keyBatch = keys.splice(0, 10);
@@ -419,7 +420,9 @@ const Denobase = async (options={}) => {
                     while (keyBatch.length > 0) {
                         const tn = this.atomic();
                         for (const key of keyBatch) {
-                            tn.delete([indexPrefix, ...key, id]);
+                            if(!key.some((item) => item==null)) {
+                                tn.delete([indexPrefix, ...key, id]);
+                            }
                         }
                         await tn.commit();
                         keyBatch = keys.splice(0, 10);
@@ -678,7 +681,9 @@ const Denobase = async (options={}) => {
                 while (keys.length > 0) {
                     const tn = this.atomic();
                     for (const key of keys) {
-                        tn.delete([indexPrefix, ...key, id]);
+                        if(!key.some((item)=>item==null)) {
+                            tn.delete([indexPrefix, ...key, id]);
+                        }
                     }
                     await tn.commit();
                     keys = removeKeys.splice(0, 10);

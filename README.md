@@ -394,13 +394,19 @@ The following operators are supported in patterns.
 # Testing
 
 `constants.js ... 100.000% (3/3)`
-`index.js ... index.js ...  86.316% (656/760)
+`index.js ... index.js ...  90.196% (690/765)`
 `operators.js ... ... 95.330% (347/364)`
 
 # Release History (Reverse Chronological Order)
 
 Until production release, all versions will just have a tertiary version number.
 Beta will commence when unit test coverage first exceeds 90% and the API is stable.
+
+2023-07-11 v0.0.14 (Beta)
+  - Added unit tests
+  - Removed some unreachable code
+  - Addressed issues with deleting indexed objects
+  - Coverage now exceeds 90%, moving to Beta
 
 2023-07-11 v0.0.13 (Alpha)
   - Added unit tests

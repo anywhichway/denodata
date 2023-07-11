@@ -152,15 +152,6 @@ Deno.test("Date key", async () => {
 });
 
 
-Deno.test("patch non-object throws", async() => {
-    await expect(db.patch(1)).rejects.toThrow();
-});
-Deno.test("patch primitive with find", async() => {
-    await db.patch(2,{pattern:[1]});
-    const result = await db.get(1);
-    expect(result.value).toEqual(2);
-});
-
 Deno.test("delete object no id throws", async() => {
     await expect(db.delete({})).rejects.toThrow();
 });
@@ -169,6 +160,11 @@ Deno.test("delete object no id throws", async() => {
 Deno.test("find using Array, i.e. key", async () => {
     const results = await db.findAll([(value)=>typeof(value)!=="string" ? value : undefined]);
     expect(results.length,2);
+})
+
+Deno.test("find no cname", async () => {
+    const results = await db.findAll(books[2]);
+    expect(results.length).toEqual(1);
 })
 
 Deno.test("delete using Array, i.e. key", async () => {
@@ -382,6 +378,16 @@ Deno.test("patch throws for no pattern", async (t) => {
     throw new Error("expected error")
 })
 
+Deno.test("patch no index", async (t) => {
+    class Dummy {
+        constructor(config={}) {
+            Object.assign(this,config);
+        }
+    }
+    await db.patch(new Dummy({name:"joe","#":"Dummy@1"}));
+    await db.delete("Dummy@1")
+})
+
 Deno.test("patch object throws for no id or pattern", async (t) => {
     try {
         await db.patch({name:"joe"});
@@ -390,6 +396,20 @@ Deno.test("patch object throws for no id or pattern", async (t) => {
     }
     throw new Error("expected error")
 })
+Deno.test("patch non-object throws", async() => {
+    await expect(db.patch(1)).rejects.toThrow();
+});
+Deno.test("patch primitive with find", async() => {
+    await db.patch(2,{pattern:[1]});
+    const result = await db.get(1);
+    expect(result.value).toEqual(2);
+});
+
+Deno.test("delete indexed", async () => {
+    await db.delete([books[0]["#"]]);
+    const entry = await db.get(books[0]["#"]);
+    expect(entry.value).toEqual(null);
+});
 
 
 
