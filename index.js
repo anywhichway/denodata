@@ -299,16 +299,23 @@ class Index {
     }
 }
 const uuidv4 = () => crypto.randomUUID();
-const Denobase = async (options={}) => {
-    const db = await Deno.openKv();
 
+
+const Denobase = async (options) => {
+    const db = await Deno.openKv();
+    db.options ||= {};
+    Object.assign(db.options,options);
+    db.options.maxTransactionSize ||= 10;
+    db.options.idProperty ||= "#";
+    db.options.metadataProperty ||= "^";
+    db.options.indexValueMutator ||= (value) => value;
     Object.defineProperty(db, "schema", {value: {}});
     Object.defineProperty(db, "indexes", {value: {}});
 
     db.createSchema = function ({
                                     cname,
                                     ctor,
-                                    primaryKey = "#",
+                                    primaryKey = db.options.idProperty,
                                     indexes = {},
                                     $schema,
                                     $id,
@@ -330,7 +337,7 @@ const Denobase = async (options={}) => {
         name ||= keys.join("_");
         if(!cname && !ctor) throw new Error("Either cname or ctor must be provided when creating an index");
         cname ||= ctor?.name;
-        this.schema[cname] ||= {primaryKey: "#", indexes: {}};
+        this.schema[cname] ||= {primaryKey: db.options.idProperty, indexes: {}};
         this.schema[cname].ctor ||= ctor || new Function(`return function ${cname}(data) { return Object.assign(this,data); }`)();
         this.schema[cname].indexes[name] = new Index({name, type: indexType, cname, keys});
         for await(const key of this.list({
@@ -373,16 +380,17 @@ const Denobase = async (options={}) => {
                     for (const {indexType, indexKeys} of indexes) {
                         const keys = serializeKey(getKeys.call(this, entry.value, indexKeys, {indexType, cname})),
                             indexPrefix = toIndexPrefix(indexType);
-                        let keyBatch = keys.splice(0, 10); // 10 is max changes in a transaction
+                        let keyBatch = keys.splice(0, db.options.maxTransactionSize);
                         while (keyBatch.length > 0) {
                             const tn = this.atomic();
-                            for (const key of keyBatch) {
-                                if(!key.some((item) => item==null)) {
+                            for (let key of keyBatch) {
+                                key = db.options.indexValueMutator(key,cname);
+                                if(key && !key.some((item) => item==null)) {
                                     tn.delete([indexPrefix, ...key, id]);
                                 }
                             }
                             await tn.commit();
-                            keyBatch = keys.splice(0, 10);
+                            keyBatch = keys.splice(0, db.options.maxTransactionSize);
                         }
                     }
                 }
@@ -405,7 +413,7 @@ const Denobase = async (options={}) => {
                 await _delete.call(this, toKey(value));
                 return
             }
-            const id = value["#"];
+            const id = value[db.options.idProperty];
             if (id) {
                 cname ||= getCname(id) || value.constructor.name;
                 value = serializeValue(value);
@@ -416,16 +424,17 @@ const Denobase = async (options={}) => {
                 for (const {indexType, indexKeys} of indexes) {
                     const keys = serializeKey(getKeys.call(this, value, indexKeys, {indexType, cname})),
                         indexPrefix = toIndexPrefix(indexType);
-                    let keyBatch = keys.splice(0, 10); // 10 is max changes in a transaction
+                    let keyBatch = keys.splice(0, db.options.maxTransactionSize);
                     while (keyBatch.length > 0) {
                         const tn = this.atomic();
-                        for (const key of keyBatch) {
-                            if(!key.some((item) => item==null)) {
+                        for (let key of keyBatch) {
+                            key = db.options.indexValueMutator(key,cname);
+                            if(key && !key.some((item) => item==null)) {
                                 tn.delete([indexPrefix, ...key, id]);
                             }
                         }
                         await tn.commit();
-                        keyBatch = keys.splice(0, 10);
+                        keyBatch = keys.splice(0, db.options.maxTransactionSize);
                     }
                 }
                 if (!indexOnly) {
@@ -447,6 +456,7 @@ const Denobase = async (options={}) => {
     db.find = async function* (pattern=null, {
         indexName,
         cname,
+        ctor,
         minScore,
         valueMatch,
         select,
@@ -454,25 +464,23 @@ const Denobase = async (options={}) => {
         offset = 0
     } = {}) {
         const isArray = Array.isArray(pattern);
+        cname ||= typeof(ctor)==="function" && ctor.name!=="Object" ? ctor.name : undefined;
         if (indexName && !cname && pattern.constructor.name==="Object") {
             throw new RangeError("cname must be specified when indexName is specified and pattern is a POJO");
         }
         if(pattern && !isArray && typeof(pattern) !== "object") {
             throw new TypeError("pattern must be one of: null, array or object")
         }
-        if(!cname && !isArray && indexName && pattern.constructor.name !== "Object") {
+        if(!cname && !isArray && pattern && pattern.constructor.name !== "Object") {
           cname = pattern.constructor.name;
         }
         const indexType = indexName ? "table" : "object",
             isTable = indexType === "table",
             keys = indexName ? this.schema[cname].indexes[indexName]?.keys : null,
             // if pattern is an array then it is a key pattern, otherwise it is an object pattern
-            indexKeys = pattern ?  (Array.isArray(pattern) ? [pattern] : getKeys.call(this, pattern, keys ? [keys] : null, {indexType,cname})) : [["#", (value) => value]],
+            indexKeys = pattern ?  (Array.isArray(pattern) ? [pattern] : getKeys.call(this, pattern, keys ? [keys] : null, {indexType,cname})) : [[db.options.idProperty, (value) => value]],
             threshold = indexKeys.length * minScore || 0,
             indexPrefix = isArray ? null : toIndexPrefix(indexType);
-        if (!isArray && !cname && pattern && pattern.constructor.name !== "Object") {
-            cname = pattern.constructor.name;
-        }
         let matches = {};
         for (let i = 0; i < indexKeys.length; i++) {
             const key = indexKeys[i],
@@ -514,7 +522,7 @@ const Denobase = async (options={}) => {
                             match.key.shift();
                         } // remove indexPrefix
                     } else if (match.key.length === 1 && isId(id)) {
-                        match.key = ["#", id];
+                        match.key = [db.options.idProperty, id];
                     }
                     if (key.length === match.key.length && (isArray || isId(id)) && matchKeys(key, match.key)) {
                         if (i === 0) {
@@ -626,7 +634,7 @@ const Denobase = async (options={}) => {
 
     db.patch = async function (value, {cname,pattern,metadata} = {}) {
         const type = typeof (value);
-        if (value && type==="object" && !(value["#"] || pattern)) {
+        if (value && type==="object" && !(value[db.options.idProperty] || pattern)) {
             throw new TypeError(`Can't patch non-object or object without id key if there is no pattern.`);
         }
         if(value && type==="object") {
@@ -651,64 +659,64 @@ const Denobase = async (options={}) => {
             }
             return;
         }
-        if(metadata) value["^"] = metadata;
+        if(metadata) value[db.options.metadataProperty] = metadata;
         value = serializeValue(value);
-        cname ||= getCname(value["#"]);
+        cname ||= getCname(value[db.options.idProperty]);
         const indexes = [];
         Object.values(this.schema[cname]?.indexes || {}).forEach(({type, keys}) => {
             indexes.push({indexType: type, keys})
         })
-        const id = value["#"],
+        const id = value[db.options.idProperty],
             entry = await this.get([id]),
             patched = entry.value || {};
         if (indexes.length === 0) {
             Object.assign(patched, value)
             await this.put(patched);
             return id;
-        } else {
-            for (const {indexType, indexKeys} of indexes) {
-                const oldIndexKeys = getKeys.call(this, patched, indexKeys, {indexType, cname}),
-                    newIndexKeys = getKeys.call(this, value, indexKeys, {indexType, cname}),
-                    removeKeys = oldIndexKeys.reduce((removeKeys, oldKey) => {
-                        if (newIndexKeys.some((newKey) => matchKeys(oldKey, newKey))) {
-                            return removeKeys;
-                        }
-                        removeKeys.push(serializeKey(oldKey));
-                        return removeKeys;
-                    }, []),
-                    indexPrefix = toIndexPrefix(indexType);
-                let keys = removeKeys.splice(0, 10); // 10 is max changes in a transaction
-                while (keys.length > 0) {
-                    const tn = this.atomic();
-                    for (const key of keys) {
-                        if(!key.some((item)=>item==null)) {
-                            tn.delete([indexPrefix, ...key, id]);
-                        }
-                    }
-                    await tn.commit();
-                    keys = removeKeys.splice(0, 10);
-                }
-            }
-            if(metadata) { // prepare to patch metadata separately
-                delete value["^"];
-            }
-            Object.assign(patched, value);
-            if(metadata) { // patch metadata separately
-                patched["^"] ||= {};
-                Object.assign(patched["^"], metadata);
-            }
-            return await db.put(patched, {cname,patch:true});  // should put inside a transaction
         }
+        for (const {indexType, indexKeys} of indexes) {
+            const oldIndexKeys = getKeys.call(this, patched, indexKeys, {indexType, cname}),
+                newIndexKeys = getKeys.call(this, value, indexKeys, {indexType, cname}),
+                removeKeys = oldIndexKeys.reduce((removeKeys, oldKey) => {
+                    if (newIndexKeys.some((newKey) => matchKeys(oldKey, newKey))) {
+                        return removeKeys;
+                    }
+                    removeKeys.push(serializeKey(oldKey));
+                    return removeKeys;
+                }, []),
+                indexPrefix = toIndexPrefix(indexType);
+            let keys = removeKeys.splice(0, db.options.maxTransactionSize);
+            while (keys.length > 0) {
+                const tn = this.atomic();
+                for (let key of keys) {
+                    key = db.options.indexValueMutator(key,cname);
+                    if(key && !key.some((item)=>item==null)) {
+                        tn.delete([indexPrefix, ...key, id]);
+                    }
+                }
+                await tn.commit();
+                keys = removeKeys.splice(0, db.options.maxTransactionSize);
+            }
+        }
+        if(metadata) { // prepare to patch metadata separately
+            delete value[db.options.metadataProperty];
+        }
+        Object.assign(patched, value);
+        if(metadata) { // patch metadata separately
+            patched[db.options.metadataProperty] ||= {};
+            Object.assign(patched[db.options.metadataProperty], metadata);
+        }
+        return await db.put(patched, {cname,patch:true});  // should put inside a transaction
     }
 
     db.put = async function (object, {cname, metadata,indexType, autoIndex,indexKeys,patch} = {}) {
         if (!object || typeof (object) !== "object") {
             throw new TypeError(`Can't put non-object: ${object}. Do you mean to use set(key,value)?`);
         }
-        cname ||= getCname(object["#"]) || object.constructor.name;
-        const id = object["#"] ||= createId(cname),
+        cname ||= getCname(object[db.options.idProperty]) || object.constructor.name;
+        const id = object[db.options.idProperty] ||= createId(cname),
             indexes = [];
-        if(metadata) object["^"] = metadata;
+        if(metadata) object[db.options.metadataProperty] = metadata;
         if(autoIndex && !indexKeys && indexType!=="table") {
             indexKeys = Object.keys(object);
             indexType = "object";
@@ -734,14 +742,17 @@ const Denobase = async (options={}) => {
             //if(keys.some((key) => key.some((item)=>item==null))) {
               //  throw new TypeError(`Can't index null or undefined value for keys ${JSON.stringify(indexKeys)} for index ${name} on object ${JSON.stringify(object)}`);
             //}
-            let keyBatch = keys.splice(0, 10); // 10 is max changes in a transaction
+            let keyBatch = keys.splice(0, db.options.maxTransactionSize);
             while (keyBatch.length > 0) {
                 const tn = this.atomic();
-                for (const key of keyBatch) {
-                    tn.set([indexPrefix, ...key, id], 0);
+                for (let key of keyBatch) {
+                    key = db.options.indexValueMutator(key,cname);
+                    if(key && !key.some((item)=>item==null)) {
+                        tn.set([indexPrefix, ...key, id], 0); // 0 is correct, index entries are just keys
+                    }
                 }
                 await tn.commit();
-                keyBatch = keys.splice(0, 10);
+                keyBatch = keys.splice(0, db.options.maxTransactionSize);
             }
         }
         await this.set([id], object);
@@ -750,7 +761,7 @@ const Denobase = async (options={}) => {
 
     const _set = db.set;
     db.set = async function (key, value,metadata) {
-        value = {data:value,metadata:metadata||value["^"]};
+        value = {data:value,metadata:metadata||value[db.options.metadataProperty]};
         const type = typeof(value.metadata?.expires);
         if(type==="number") {
             value.metadata.expires = new Date(Date.now()+value.metadata.expires);

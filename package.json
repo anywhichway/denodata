@@ -1,6 +1,6 @@
 {
   "name": "denobase",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "Generalized indexing and search for Deno KV",
   "type": "module",
   "main": "index.js",

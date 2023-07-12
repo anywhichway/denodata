@@ -1,16 +1,16 @@
 # denobase
 
-A Deno native indexed database. Backed by the `DenoKV` store it has zero external dependencies.
+A Deno native indexed database. Backed by the `Deno KV` store it has zero external dependencies.
 
 Both traditional table-oriented and object-oriented index approaches are supported and can be mixed and matched.
 
-The standard `DenoKV` key-value functions remain available and are enhanced to support the indexing and metadata features.
+The standard `Deno KV` key-value functions remain available and are enhanced to support the indexing and metadata features.
 
 Support for automatic serialization and deserialization of class instances, automatic expiration and developer defined metadata.
 
 Support for `Date`, `RegExp` and `symbol` as part of keys. Support for `symbol` as part of values.
 
-A powerful `db.find` function that works on both indexes and regular keys with over 50 operators including regular expressions, soundex/echoes, credit card, SSNs and more. If something is missing, it can be added in as little as one line.
+A powerful `db.find` function that supports approximate matching and works on both indexes and regular keys with over 50 operators including regular expressions, soundex/echoes, credit card, SSNs and more. If something is missing, it can be added in as little as one line.
 
 # Usage
 
@@ -19,27 +19,57 @@ import {Denobase,operators} from "https://unpkg.com/denobase";
 const {$startsWith,$eq} = operators;
 
 const db = await Denobase();
+```
 
-// Use like DenoKV
-await db.set("mykey", "myvalue");
-const {key,value,version} = await db.get("mykey");
+## Use like Deno KV
+
+```javascript
+await db.set(["mykey"], "myvalue");
+const {key,value,version} = await db.get(["mykey"]);
 await db.delete(["mykey"]);
+```
 
-// Use simplified and extended DenoKV
-await db.set("mykey", "myvalue"); // primitve keys are automatically converted to arrays required by DenoKV
+## Simplified and Extended Deno KV
+
+Primitive keys are automatically converted to the arrays required by Deno KV.
+
+Deno KV does not provide a `db.clear` function. Denobase does.
+
+```javascript
+
+```javascript
+await db.set("mykey", "myvalue");
 await (async () => { const {key,value,version} = await db.get("mykey")})();
-await db.delete("mykey"); // using an array for the key is optional, autmatic conversion is done
-await db.clear(); // DenoKV does not provide a clear function.
+await db.delete("mykey");
+await db.clear();
+```
 
-// Use with automatic object indexes
-const id = await db.put({id:1,name:"John Doe",age:42},{cname:"Person",autoIndex:true});
+## Automatic object indexes
+
+All properties and sub-properties on an object can be automatically indexed and collection/class names specified using the option `cname`.
+
+```javascript
 await (async () => {
+  const id = await db.put({id:1,name:"John Doe",age:42},{cname:"Person",autoIndex:true});
   const {key,value,version} = await db.get(id);
   console.log(value); // prints the Person instance
 })();
+```
+
+### Finding objects
+
+Denobase can be searched using literals, built-in operators, or inline functions.
+
+A class instance can be passed as a pattern or a `cname` or `ctor` (constructor) can be used to restrict searches to a specific collection/class.
+
+A POJO can be passed as a pattern without a `cname` or `ctor` to search across all collections/classes.
+
+If both a `cname` and `ctor` are specified, the `cname` takes precedence and is used to determine the collection/class name.
+
+```javascript
 // find with literals
 await (async () => {
-  for await (const {key,value,version} of db.find({age:42},{cname:"Person"})) {
+  for await (const {key,value,version} of db.find(new Person({age:42}))) {
     console.log(value); // prints the Person instance
   }
 })();
@@ -51,14 +81,17 @@ await (async () => {
 })();
 // inline your own operators
 await (async () => {
-  for await (const {key, value, version} of db.find({age: (v) => v === 42 ? v : undefined}, {cname: "Person"})) {
+  for await (const {key, value, version} of db.find({age: (v) => v === 42 ? v : undefined}, {ctor: Person})) {
     console.log(value); // prints the Person instance
   }
   await db.delete(value);
   // or await db.delete(id); // deletes the Person instance, updates indexes
 })();
+```
 
-// Use with declared indexes and classes
+## Declared indexes and classes
+
+```javascript
 class Book {
   constructor(author, title,publisher) {
     this.author = author;
@@ -113,25 +146,26 @@ Run Deno with the `--allow-net` and  `--unstable` flags.
 
 `db Denobase(options={})`
 
-- Returns an enhanced `DenoKV`.
+- Returns an enhanced `Deno KV`.
 
-- `options` is reserved for future use.
+  - `options` has the surface `{idProperty:string="#",metadataProperty:string="^",maxTransactionSize:number=10,indexValueMutator:function}`. At the moment, 10 is the max transaction size supported by `Deno KV` itself. `indexValueMutator` is documented below.
+  - `indexValueMutator` is a function that takes `key` and `cname`. It should either return the key, a modified form of the key, `undefined` or throw an error. The value being indexed is the last item in the `key`. If `undefined` is returned, the property holding the value is not indexed. If an error is thrown the indexing operation is aborted. This is useful for indexing objects that contain properties that contain string values too large for `Deno KV` to handle. The current limit for `Deno KV` is 2048 bytes for an entire key. The Denobase index structure includes property names, so the practical limit for a string is slightly less and depends on the length of property names. If you expect large string values, you must provide an implementation for this function. In advanced cases, it can be used to support vector transformations on values.
 
 Notes:
 
-- Keys in `denobase` can be any value that is a valid `DenoKV` key component, or they can be a `DenoKV` key. If they are not a `DenoKV` key, they are automatically converted into the arrays normally used by `DenoKV`. For example `"mykey"` is the same as `["mykey"]`.
+- Keys in `denobase` can be any value that is a valid `Deno KV` key component, or they can be a `Deno KV` key. If they are not a `Deno KV` key, they are automatically converted into the arrays normally used by `Deno KV`. For example `"mykey"` is the same as `["mykey"]`.
 
-- Object ids are stored in the property `#`. This will be made configurable in a future release.
+- Object ids are stored in the property `#`. This can be changed with the option `idProperty`.
 
-- several methods take a `metadata` parameter. This can contain any metadata you want to associate with the record, e.g. person that created the record. It can also contain an `expires` property. If `expires` is a number it represents the number of milliseconds in the future. If `expires` is a `Date` it is the datetime the record expires. For compliance and resource management reasons it is important to know that deletion actually occurs when an attempt is made to retrieve the record. There is no deameon that constantly purges the database. Metadata is automatically indexed when using object indexes.
+- Several methods take a `metadata` parameter. This can contain any metadata you want to associate with the record, e.g. person that created the record. It can also contain an `expires` property. If `expires` is a number it represents the number of milliseconds in the future. If `expires` is a `Date` it is the datetime the record expires. For compliance and resource management reasons it is important to know that deletion actually occurs when an attempt is made to retrieve the record. There is no daemon that constantly purges the database. Metadata is automatically indexed when using `autoIndex`. When manually creating indexes, add `^` to the index keys to index metadata. This can be changed with the start-up option `metadataProperty`.
 
 `void db.delete(keyOrPattern:primitive|UInt8Array|array|object,{?cname:string,?indexOnly:bool,?find:boolean})`
 
 - Deletes a record using key or pattern. Updates indexes.
 
-- If `keyOrPattern` is a primitive, UInt8Array, or valid DenoKV key, the record is deleted.
+- If `keyOrPattern` is a primitive, `UInt8Array`, or valid `Deno KV` key, the record is deleted.
 
-- If `keyOrPattern` is an array, but not a valid DenoKV key and `find` is true, `db.find` is used with the array as a pattern. Yielded values are deleted. The `find` flag is used to prevent deletion when an invalid DenoKV key is accidentally passed. 
+- If `keyOrPattern` is an array, but not a valid `Deno KV` key and `find` is true, `db.find` is used with the array as a pattern. Yielded values are deleted. The `find` flag is used to prevent deletion when an invalid `Deno KV` key is accidentally passed. 
 
 - If `keyOrPattern` is an object with an id, the id is used to delete the object.
 
@@ -141,7 +175,7 @@ Notes:
 
 - If `indexOnly` is `true` and `keyOrPattern` is an object, only the index entries are deleted.
 
-`Entry *db.find(pattern:array|object,{?cname:string,?valueMatch:function|object,?minScore:number,?select:function|object,?offset:number,?limit:number})`
+`Entry *db.find(pattern:array|object,{?cname:string,?ctor:function,?valueMatch:function|object,?minScore:number,?select:function|object,?offset:number,?limit:number})`
 
 - `Entry` is an object, but not a formal class, with the following properties:
 
@@ -159,15 +193,15 @@ Notes:
     - `count` - the position of the entry in the results after the initial search offset is applied
     - `totalCount` - the total number of entries in the results
 
-- `pattern` can be an array or an object. If it is an array, it is treated similar to a DenoKV key, except additional pattern matching semantics below apply.  If it is an object, it is converted into a collection of keys for matching against indexes.
+- `pattern` can be an array or an object. If it is an array, it is treated similar to a `Deno KV` key, except additional pattern matching semantics below apply.  If it is an object, it is converted into a collection of keys for matching against indexes.
 
-- If `pattern` is a POJO, the `cname` parameter can be used to treat it like a class. If `pattern` is an object and `cname` is not specified, the `cname` defaults to the `constructor.name` of the object, unless it is a POJO, in which case a cross class search is conducted.
+- If `pattern` is a POJO, the `cname` parameter can be used to treat it like a class. If `pattern` is an object and `cname` is not specified, the `cname` defaults to the `constructor.name` of the object, unless it is a POJO, in which case a cross collection/class search is conducted.
 
 - The key pattern matching semantics are as follows:
 
     - A `null` pattern matches all records.
-    - Any element of a pattern key that is not a valid DenoKV key component is treated as a wildcard with a lower bound of `UInt8Array([])`. Since bounds are non-inclusive, `true` is not the upper bound; rather, the key is extended one element with a value of `UInt8Array([])`.
-    - The DenoKV `list` function is called with the pattern(s) to get the initial set(s) of keys.
+    - Any element of a pattern key that is not a valid `Deno KV` key component is treated as a wildcard with a lower bound of `UInt8Array([])`. Since bounds are non-inclusive, `true` is not the upper bound; rather, the key is extended one element with a value of `UInt8Array([])`.
+    - The `Deno KV` `list` function is called with the pattern(s) to get the initial set(s) of keys.
     - The associated sets of keys are intersected to get the final set of keys.
     - The final set of keys is filtered to ensure that the keys match the original pattern(s) exactly, e.g. functions and RegExp or special literals, e.g. Dates, in the pattern(s) are used to test the key part at the same index.
     - The values associated with the keys are retrieved from the database.
@@ -187,7 +221,7 @@ Notes:
 
 `Entry db.get(key:primitive|UInt8Array|array)`
 
-- Works like `DenoKV.get` except that if the entry value is a class instance saved using `db.put`, it is automatically deserialized and instantiated.
+- Works like `Deno KV.get` except that if the entry value is a class instance saved using `db.put`, it is automatically deserialized and instantiated.
 
 `Entry db.patch(value:object|function,{?cname:string,?metadata:object,?pattern:array|object})`
 
@@ -206,9 +240,9 @@ Notes:
 
 - `Denobase` serializes `bigints`, `symbols`, `Dates`, and `RegExp` so that they can be restored.
 
-`void db.set(key:primitive|DenoKV Key,value:any,?metadata:object)`
+`void db.set(key:primitive|Deno KV Key,value:any,?metadata:object)`
 
-- Works like `DenoKV.set`. Does not manage indexes or do specialized serialization.
+- Works like `Deno KV.set`. Does not manage indexes or do specialized serialization.
 - See notes at start of API section regarding `key` and `value` types.
 
 # Key and Value Space
@@ -252,15 +286,15 @@ Values in Denobase can be arbitrary JavaScript values that are compatible with t
 - Date
 - RegExp
 
-Unlike DenoKV, `undefined` and `null` are not valid values.
+Unlike Deno KV, `undefined` and `null` are not valid values.
 
 Objects and arrays can contain any of the above types, including other objects and arrays. Maps and Sets can contain any of the above types, including other Maps and Sets.
 
-Unlike DenoKV, circular references within values are not officially supported.
+Unlike Deno KV, circular references within values are not officially supported.
 
-Objects with non-primitive prototypes are supported when inserted via `db.put`. This is unlike DenoKV, which does not support objects with a non-primitive prototype.
+Objects with non-primitive prototypes are supported when inserted via `db.put`. This is unlike Deno KV, which does not support objects with a non-primitive prototype.
 
-Functions cannot be serialized but symbols can (also an enhancement over DenoKV).
+Functions cannot be serialized but symbols can (also an enhancement over Deno KV).
 
 # Index Structure
 
@@ -270,7 +304,13 @@ Index keys are arrays that start with a prefix indicating the type of index, `__
 
 Indexes are named based on the keys they contain.
 
-Unless restricted by an index definition, an object index has one entry for each property and sub-property in an object. Sub-properties results in a sequence of propertye names in the index key. These are followed by the value and finally the id of the object. For example, a full object index of `{a: {b: 1},c:2,"#":'id'}` would have the following index entries:
+Re-indexing is automatic when objects are patched or deleted.
+
+The underlying `Deno KV` has limits on the size of transactions. Indexing more keys than the transaction limit will result in multiple transactions. This is handled automatically by the library.
+
+The underlying `Deno KV` has limits on key size. Index keys are constructed to be as small as possible, but if the key size limit is exceeded, the library will handle based on start-up options. The default is to throw an error.
+
+Unless restricted by an index definition, an object index has one entry for each property and sub-property in an object. Sub-properties result in a sequence of property names in the index key. These are followed by the value and finally the id of the object. For example, a full object index of `{a: {b: 1},c:2,"#":'id'}` would have the following index entries:
 
 ```javascript
 ['__oindex__', 'a', 'b', 1, 'id']
@@ -302,8 +342,8 @@ const book = {
 // object index entries
 ['__oindex__', 'title', 'The Hobbit', 'Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
 ['__oindex__', 'author', 'J.R.R. Tolkien', 'Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
-['__oindex__', 'pubisher', 'name','Houghton Mifflin','Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
-['__oindex__', 'pubisher','location', 'Boston','Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
+['__oindex__', 'publisher', 'name','Houghton Mifflin','Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
+['__oindex__', 'publisher','location', 'Boston','Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
 // table index entries
 ['__tindex__', 'title', 'The Hobbit', 'Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
 ['__tindex__', 'author', 'J.R.R. Tolkien', 'Book@4b1dd123-9eda-4133-a6b4-3ec9eb68149a']
@@ -393,14 +433,20 @@ The following operators are supported in patterns.
 
 # Testing
 
-`constants.js ... 100.000% (3/3)`
-`index.js ... index.js ...  90.196% (690/765)`
-`operators.js ... ... 95.330% (347/364)`
+- `constants.js ... 100.000% (3/3)`
+- `index.js ... index.js ...  90.196% (690/765)`
+- `operators.js ... ... 95.330% (347/364)`
 
 # Release History (Reverse Chronological Order)
 
-Until production release, all versions will just have a tertiary version number.
-Beta will commence when unit test coverage first exceeds 90% and the API is stable.
+- Until production release, all versions will just have a tertiary version number.
+- Beta  commenced when unit test coverage first exceeded 90%
+- The exposed API is stable. Additional features may be exposed.
+
+2023-07-12 v0.0.15 (Beta)
+  - Enhanced documentation
+  - Minor code cleanup
+  - Added support for options `{idProperty,metadataProperty,maxTransactionSize,indexValueMutator}`
 
 2023-07-11 v0.0.14 (Beta)
   - Added unit tests
