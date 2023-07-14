@@ -1,11 +1,11 @@
 {
   "name": "denobase",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "description": "Generalized indexing and search for Deno KV",
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "deno test  --allow-net --unstable"
   },
   "repository": {
     "type": "git",

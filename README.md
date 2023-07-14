@@ -443,6 +443,9 @@ The following operators are supported in patterns.
 - Beta  commenced when unit test coverage first exceeded 90%
 - The exposed API is stable. Additional features may be exposed.
 
+2023-07-14 v0.0.16 (Beta)
+  - Updated package.json test command so it executes all existing tests which were being run from IDE
+
 2023-07-12 v0.0.15 (Beta)
   - Enhanced documentation
   - Minor code cleanup
