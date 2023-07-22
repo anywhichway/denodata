@@ -450,3 +450,5 @@ Deno.test("sum", async () => {
     const sum = await db.get("count");
     expect(sum.value.value).toEqual(1n);
 })
+
+export default db;

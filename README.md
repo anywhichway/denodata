@@ -447,6 +447,9 @@ The following operators are supported in patterns.
 - Beta  commenced when unit test coverage first exceeded 90%
 - The exposed API is stable. Additional features may be exposed.
 
+2023-07-22 v0.0.18 (Beta)
+  - Attempt to package tests as a module for use in Deno Deploy.
+
 2023-07-22 v0.0.17 (Beta)
   - Commenced testing on Deno Deploy
   - Adjusted serializations to handle data that is manipulated at the atomic transaction level rather than just the database level 
