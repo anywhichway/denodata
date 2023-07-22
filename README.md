@@ -1,12 +1,12 @@
 # denobase
 
-A Deno native indexed database. Backed by the `Deno KV` store it has zero external dependencies.
+A Deno native indexed database. Backed by the `Deno KV` store, `denobase` has zero external dependencies.
 
 Both traditional table-oriented and object-oriented index approaches are supported and can be mixed and matched.
 
 The standard `Deno KV` key-value functions remain available and are enhanced to support the indexing and metadata features.
 
-Support for automatic serialization and deserialization of class instances, automatic expiration and developer defined metadata.
+Support for automatic serialization and deserialization of class instances, automatic key/value expiration and developer defined metadata.
 
 Support for `Date`, `RegExp` and `symbol` as part of keys. Support for `symbol` as part of values.
 
@@ -16,6 +16,8 @@ A powerful `db.find` function that supports approximate matching and works on bo
 
 ```javascript
 import {Denobase,operators} from "https://unpkg.com/denobase";
+import {Denobase} from "https://unpkg.com/denobase";
+import {operators} from "https://unpkg.com/denobase/operators";
 const {$startsWith,$eq} = operators;
 
 const db = await Denobase();
@@ -155,9 +157,11 @@ Notes:
 
 - Keys in `denobase` can be any value that is a valid `Deno KV` key component, or they can be a `Deno KV` key. If they are not a `Deno KV` key, they are automatically converted into the arrays normally used by `Deno KV`. For example `"mykey"` is the same as `["mykey"]`.
 
-- Object ids are stored in the property `#`. This can be changed with the option `idProperty`.
+- Object ids are stored in the property `#`. This can be changed with the database option `idProperty`.
 
 - Several methods take a `metadata` parameter. This can contain any metadata you want to associate with the record, e.g. person that created the record. It can also contain an `expires` property. If `expires` is a number it represents the number of milliseconds in the future. If `expires` is a `Date` it is the datetime the record expires. For compliance and resource management reasons it is important to know that deletion actually occurs when an attempt is made to retrieve the record. There is no daemon that constantly purges the database. Metadata is automatically indexed when using `autoIndex`. When manually creating indexes, add `^` to the index keys to index metadata. This can be changed with the start-up option `metadataProperty`.
+
+- For the v0.x.x releases only the top level database functions have been modified to support enhanced capabilities. Methods on transactions, e.g. `db.atomic().set()`, are native and do not support automatic key conversion, metadata, etc.
 
 `void db.delete(keyOrPattern:primitive|UInt8Array|array|object,{?cname:string,?indexOnly:bool,?find:boolean})`
 
@@ -442,6 +446,10 @@ The following operators are supported in patterns.
 - Until production release, all versions will just have a tertiary version number.
 - Beta  commenced when unit test coverage first exceeded 90%
 - The exposed API is stable. Additional features may be exposed.
+
+2023-07-22 v0.0.17 (Beta)
+  - Commenced testing on Deno Deploy
+  - Adjusted serializations to handle data that is manipulated at the atomic transaction level rather than just the database level
 
 2023-07-14 v0.0.16 (Beta)
   - Updated package.json test command so it executes all existing tests which were being run from IDE

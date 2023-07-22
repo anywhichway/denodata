@@ -444,3 +444,9 @@ Deno.test("expire throws for type", async (t) => {
     }
     throw new Error("expected error")
 })
+
+Deno.test("sum", async () => {
+    await db.atomic().sum(["count"],1n).commit();
+    const sum = await db.get("count");
+    expect(sum.value.value).toEqual(1n);
+})

@@ -87,7 +87,13 @@ const deserializeSpecial = (key, value) => {
     }
     if (value && type === "object") {
         Object.entries(value).forEach(([key, data]) => {
-            value[key] = deserializeSpecial(key, data);
+            //value[key] = deserializeSpecial(key, data); // does not work in Deno deploy KV beta
+            const desc = {...Object.getOwnPropertyDescriptor(value,key),value:deserializeSpecial(key, data)};
+            if(desc.writable) {
+                value[key] = desc.value;
+            } else if(desc.configurable) {
+                Object.defineProperty(value,key,desc);
+            }
         });
     }
     return value;
@@ -226,7 +232,12 @@ const serializeSpecial = (key, value,skip=[]) => {
             value = {...value};
             // what about Set and Map
             Object.entries(value).forEach(([key, data]) => {
-                value[key] = serializeSpecial(key, data,skip);
+                const desc = {...Object.getOwnPropertyDescriptor(value,key),value:serializeSpecial(key, data,skip)};
+                if(desc.writable) {
+                    value[key] = desc.value;
+                } else if(desc.configurable) {
+                    Object.defineProperty(value,key,desc);
+                }
             });
         }
         Object.setPrototypeOf(value, proto);
@@ -616,7 +627,7 @@ const Denobase = async (options) => {
     const _get = db.get;
     db.get = async function (key) {
         const entry = deserializeSpecial(null,await _get.call(this, toKey(key)));
-        if(entry.value!=null) {
+        if(entry.value?.data!==undefined) {
             entry.metadata = entry.value.metadata;
             if(entry.metadata?.expires && entry.metadata.expires < Date.now()) {
                 await this.delete(key);
