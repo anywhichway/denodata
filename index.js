@@ -211,7 +211,7 @@ const serializeKey = (key,skip=["bigint"]) => {
     return serializeSpecial(null,key,skip);
 }
 
-const serializeValue = (value,skip=["bigint",RegExp,Date,"undefined"]) => {
+const serializeValue = function(value,skip=["bigint",RegExp,Date,"undefined"]) {
     return serializeSpecial(null,value,skip);
 }
 
@@ -773,13 +773,16 @@ const Denobase = async (options) => {
     const _set = db.set;
     db.set = async function (key, value,metadata) {
         value = {data:value,metadata:metadata||value[db.options.metadataProperty]};
+        //delete value.data[db.options.metadataProperty];
         const type = typeof(value.metadata?.expires);
         if(type==="number") {
             value.metadata.expires = new Date(Date.now()+value.metadata.expires);
         } else if(value.metadata?.expires && !(type==="object" && value.metadata.expires instanceof Date)) {
             throw new TypeError(`Expires value must be number of milliseconds or Date: ${value.metadata.expires}`);
         }
-        return _set.call(this, toKey(key),serializeValue(value));
+        value = serializeValue(value);
+        delete value.data[this.options.metadataProperty];
+        return _set.call(this, toKey(key),value);
     }
     return db;
 }

@@ -449,7 +449,8 @@ The following operators are supported in patterns.
 
 2023-07-22 v0.0.17 (Beta)
   - Commenced testing on Deno Deploy
-  - Adjusted serializations to handle data that is manipulated at the atomic transaction level rather than just the database level
+  - Adjusted serializations to handle data that is manipulated at the atomic transaction level rather than just the database level 
+  - Ensured metadata is not stored twice (once on object and once as metadata)
 
 2023-07-14 v0.0.16 (Beta)
   - Updated package.json test command so it executes all existing tests which were being run from IDE
