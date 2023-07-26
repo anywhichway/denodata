@@ -1,9 +1,9 @@
 {
   "name": "denobase",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "description": "Generalized indexing and search for Deno KV",
   "type": "module",
-  "main": "index.js",
+  "main": "index.ts",
   "scripts": {
     "test": "deno test  --allow-net --unstable"
   },

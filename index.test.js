@@ -1,12 +1,12 @@
 import { expect } from "https://deno.land/x/expect@v0.2.1/mod.ts";
-import {Denobase} from "./index.js";
+import {Denobase} from "./index.ts";
 import {operators} from "./operators.js";
 const {$echoes} = operators;
 
 const test = async (deno) => {
     const tests = [];
     if(deno) {
-        const _test = deno.test.bind(deno);
+        //const _test = deno.test.bind(deno);
         deno.test = function(title,test) {
             tests.push({title,test});
         }
@@ -48,8 +48,6 @@ const test = async (deno) => {
     })];
 
     await db.clear();
-    await db.set(1,1);
-    await db.set(false,false);
 
 
     deno.test("createIndex throws for no keys", async () => {
@@ -97,6 +95,7 @@ const test = async (deno) => {
     })
 
     deno.test("get primitive", async () => {
+        await db.set(1,1);
         const result = await db.get(1);
         expect(result.value).toEqual(1);
     })
