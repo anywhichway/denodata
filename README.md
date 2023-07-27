@@ -135,20 +135,16 @@ await (async () => {
 
 # Installation
 
-Not yet available on `deno.land/x`. For now, use: 
-
 ```javascript
-import {denodata} from "https://unpkg.com/denodata";` 
-import {operators} from "https://unpkg.com/denodata/operators";
+import Denodata from "https://deno.land/x/denodata";
+import {operators} from "https://deno.land/x/denodata/operators";
 ```
 
 Run Deno with the `--allow-net` and  `--unstable` flags.
 
 # API
 
-`db denodata(options={})`
-
-- Returns an enhanced `Deno KV`.
+`Denodata(options={}):Proxy<Deno.Kv>`
 
   - `options` has the surface `{idProperty:string="#",metadataProperty:string="^",maxTransactionSize:number=10,indexValueMutator:function}`. At the moment, 10 is the max transaction size supported by `Deno KV` itself. `indexValueMutator` is documented below.
   - `indexValueMutator` is a function that takes `key` and `cname`. It should either return the key, a modified form of the key, `undefined` or throw an error. The value being indexed is the last item in the `key`. If `undefined` is returned, the property holding the value is not indexed. If an error is thrown the indexing operation is aborted. This is useful for indexing objects that contain properties that contain string values too large for `Deno KV` to handle. The current limit for `Deno KV` is 2048 bytes for an entire key. The denodata index structure includes property names, so the practical limit for a string is slightly less and depends on the length of property names. If you expect large string values, you must provide an implementation for this function. In advanced cases, it can be used to support vector transformations on values.
@@ -163,7 +159,7 @@ Notes:
 
 - For the v0.x.x releases only the top level database functions have been modified to support enhanced capabilities. Methods on transactions, e.g. `db.atomic().set()`, are native and do not support automatic key conversion, metadata, etc.
 
-`void db.delete(keyOrPattern:primitive|UInt8Array|array|object,{?cname:string,?indexOnly:bool,?find:boolean})`
+`db.delete(keyOrPattern:primitive|UInt8Array|array|object,{?cname:string,?indexOnly:bool,?find:boolean}):void`
 
 - Deletes a record using key or pattern. Updates indexes.
 
@@ -179,7 +175,7 @@ Notes:
 
 - If `indexOnly` is `true` and `keyOrPattern` is an object, only the index entries are deleted.
 
-`Entry *db.find(pattern:array|object,{?cname:string,?ctor:function,?valueMatch:function|object,?minScore:number,?select:function|object,?offset:number,?limit:number})`
+`*db.find(pattern:array|object,{?cname:string,?ctor:function,?valueMatch:function|object,?minScore:number,?select:function|object,?offset:number,?limit:number}):Entry`
 
 - `Entry` is an object, but not a formal class, with the following properties:
 
@@ -223,11 +219,11 @@ Notes:
 
 - `offset` indicates how many entries to skip before returning results.
 
-`Entry db.get(key:primitive|UInt8Array|array)`
+`db.get(key:primitive|UInt8Array|array):Entry`
 
 - Works like `Deno KV.get` except that if the entry value is a class instance saved using `db.put`, it is automatically deserialized and instantiated.
 
-`Entry db.patch(value:object|function,{?cname:string,?metadata:object,?pattern:array|object})`
+`db.patch(value:object|function,{?cname:string,?metadata:object,?pattern:array|object}):Entry`
 
 - If value is an object and `pattern` is not provided, `db.patch` finds the object in the database based on its id, applies the changes, updates indexes, and saves the object.
 - If `pattern` is provided, it is used as an argument to `db.find` and all matching entries are updated using `value`. If `value` is a primitive, it is used as the new value. If it is an object, it is merged with the existing value. If it is a function, it is called with the existing value and the return value is used as the new value. If the function returns `undefined`, the value is not changed.
@@ -236,7 +232,7 @@ Notes:
 - If `cname` is provided, the object is treated as an instance of `cname`.
 - If `metadata` is provided, it is merged with the existing metadata.
 
-`void db.put(object,{?cname:string,?metadata:object,?autoIndex:boolean})` 
+`db.put(object,{?cname:string,?metadata:object,?autoIndex:boolean}):void` 
 
 - Takes an object, assigns an id if necessary, populates/updates indexes, and serializes then saves the object using the id as the key.
 - If `cname` is provided, the object is treated as an instance of `cname`.
@@ -244,7 +240,7 @@ Notes:
 
 - `denodata` serializes `bigints`, `symbols`, `Dates`, and `RegExp` so that they can be restored.
 
-`void db.set(key:primitive|Deno KV Key,value:any,?metadata:object)`
+`db.set(key:primitive|Deno KV Key,value:any,?metadata:object):void`
 
 - Works like `Deno KV.set`. Does not manage indexes or do specialized serialization.
 - See notes at start of API section regarding `key` and `value` types.
@@ -446,6 +442,11 @@ The following operators are supported in patterns.
 - Until production release, all versions will just have a tertiary version number.
 - Beta  commenced when unit test coverage first exceeded 90%
 - The exposed API is stable. Additional features may be exposed.
+
+
+2023-07-27 v0.0.24 (Beta)
+  - Some adjustments to README.md to start brining documentation in line with TypeScript.
+  - Modified index.ts to export `Denodata` as well as an alias `Denobase` to preserve backward compatibility.
 
 2023-07-27 v0.0.23 (Beta)
   - Renamed to `denodata` because `denobase` was already taken on `deno.land/x`.

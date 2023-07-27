@@ -251,10 +251,10 @@ const uuidv4 = (): string => crypto.randomUUID();
 
 const db:{[key:string|symbol]:any} = (await Deno.openKv() as {[key:string|symbol]:any});
 
-type DenobaseOptions = {maxTransactionSize?:number,idProperty?:string,metadataProperty?:string,indexValueMutator?:(value:any)=>any};
+type DenodataOptions = {maxTransactionSize?:number,idProperty?:string,metadataProperty?:string,indexValueMutator?:(value:any)=>any};
 
-function Denobase(options:DenobaseOptions) {
-    const me = (Object.create(Denobase.prototype) as {[key:string|symbol]:any});
+function Denodata(options:DenodataOptions) {
+    const me = (Object.create(Denodata.prototype) as {[key:string|symbol]:any});
     Object.assign(me.options,options);
     me.options.maxTransactionSize ||= 10;
     me.options.idProperty ||= "#";
@@ -268,13 +268,13 @@ function Denobase(options:DenobaseOptions) {
     });
 }
 
-Denobase.prototype = db;
+Denodata.prototype = db;
 const options:{[key:string]:any} = {};
-Denobase.prototype.options = options;
-Denobase.prototype.schema = {};
-Denobase.prototype.indexes = {};
+Denodata.prototype.options = options;
+Denodata.prototype.schema = {};
+Denodata.prototype.indexes = {};
 
-Denobase.prototype.createSchema = function ({
+Denodata.prototype.createSchema = function ({
                                   cname,
                                   ctor,
                                   primaryKey,
@@ -295,7 +295,7 @@ Denobase.prototype.createSchema = function ({
     this.schema[(cname as string)] = {cname, ctor, primaryKey, indexes, $schema, $id, title, description, properties, required};
 }
 
-Denobase.prototype.createIndex = async function ({name, indexType="object", ctor,cname,keys}:{name?:string,indexType?:string,ctor?:Function,cname?:string,keys?:string[]} = {}) {
+Denodata.prototype.createIndex = async function ({name, indexType="object", ctor,cname,keys}:{name?:string,indexType?:string,ctor?:Function,cname?:string,keys?:string[]} = {}) {
     if (!keys || !Array.isArray(keys) || !keys.length) throw new Error("Index must have at least one key");
     name ||= keys.join("_");
     if(!cname && !ctor) throw new Error("Either cname or ctor must be provided when creating an index");
@@ -320,14 +320,14 @@ Denobase.prototype.createIndex = async function ({name, indexType="object", ctor
     return result;
 }*/
 
-Denobase.prototype.clear = async function () {
+Denodata.prototype.clear = async function () {
     for await(const {key} of this.list({start: [new Uint8Array([])], end: [true]})) {
         await this.delete(key);
     }
 }
 
 const _delete = db.delete.bind(db);
-Denobase.prototype.delete = async function (value:any, {cname, indexOnly,find}:{cname?:string,indexOnly?:boolean,find?:boolean} = {}) {
+Denodata.prototype.delete = async function (value:any, {cname, indexOnly,find}:{cname?:string,indexOnly?:boolean,find?:boolean} = {}) {
     const type = typeof (value);
     if (Array.isArray( value)) {
         const key = toPattern(toKey(value));
@@ -418,7 +418,7 @@ Denobase.prototype.delete = async function (value:any, {cname, indexOnly,find}:{
 }
 
 //valueMatch,select,{cname,fulltext,scan,sort,sortable,minScore,limit=Infinity,offset=0}={}
-Denobase.prototype.find = async function* (pattern:({[key:string]:any}|any)=null, {
+Denodata.prototype.find = async function* (pattern:({[key:string]:any}|any)=null, {
     indexName,
     cname,
     ctor,
@@ -573,7 +573,7 @@ Denobase.prototype.find = async function* (pattern:({[key:string]:any}|any)=null
     }
 }
 
-Denobase.prototype.findAll = async function(...args:any[]) {
+Denodata.prototype.findAll = async function(...args:any[]) {
     const results = [];
     for await (const result of this.find(...args)) {
         results.push(result);
@@ -582,7 +582,7 @@ Denobase.prototype.findAll = async function(...args:any[]) {
 }
 
 const _get = db.get.bind(db);
-Denobase.prototype.get = async function (key:any) {
+Denodata.prototype.get = async function (key:any) {
     const entry = deserializeSpecial(null,await _get(toKey(key)));
     if(entry.value?.data!==undefined) {
         entry.metadata = entry.value.metadata;
@@ -600,7 +600,7 @@ Denobase.prototype.get = async function (key:any) {
     return entry;
 }
 
-Denobase.prototype.getKeys = function(target:object, value:any, schemaKeys:string[][], {indexType, cname, noTokens}:{[key:string]:any} = {}, {hasRegExp, keys = []}:{hasRegExp?:boolean,keys?:any[]} = {}) {
+Denodata.prototype.getKeys = function(target:object, value:any, schemaKeys:string[][], {indexType, cname, noTokens}:{[key:string]:any} = {}, {hasRegExp, keys = []}:{hasRegExp?:boolean,keys?:any[]} = {}) {
     noTokens ||= this.options.index?.fulltext || this.options.index?.trigram;
     if (target && typeof (target) === "object" && !Array.isArray(target)) {
         return this.getKeys([], target, value, schemaKeys);
@@ -655,7 +655,7 @@ Denobase.prototype.getKeys = function(target:object, value:any, schemaKeys:strin
     return keys;
 }
 
-Denobase.prototype.matchValue = function(pattern:object, target:object) {
+Denodata.prototype.matchValue = function(pattern:object, target:object) {
     const targetKeys = this.getKeys(target);
     this.matchValue.score = 1;
     if (this.getKeys(pattern).every((key:any[]) => {
@@ -667,7 +667,7 @@ Denobase.prototype.matchValue = function(pattern:object, target:object) {
     }
 }
 
-Denobase.prototype.patch = async function (value:any, {cname,pattern,metadata}:{cname?:string|undefined,pattern?:object|undefined,metadata?:object|undefined} = {}) {
+Denodata.prototype.patch = async function (value:any, {cname,pattern,metadata}:{cname?:string|undefined,pattern?:object|undefined,metadata?:object|undefined} = {}) {
     const type = typeof (value);
     if (value && type==="object" && !(value[this.options.idProperty] || pattern)) {
         throw new TypeError(`Can't patch non-object or object without id key if there is no pattern.`);
@@ -745,7 +745,7 @@ Denobase.prototype.patch = async function (value:any, {cname,pattern,metadata}:{
     return await this.put(patched, {cname,patch:true});  // should put inside a transaction
 }
 
-Denobase.prototype.put = async function (object: { [key:string]:any }, {cname, metadata,indexType, autoIndex,indexKeys,patch} :{cname?:string,metadata?:object,indexType?:string,autoIndex?:boolean,indexKeys?:string[],patch?:boolean}={}) : Promise<string> {
+Denodata.prototype.put = async function (object: { [key:string]:any }, {cname, metadata,indexType, autoIndex,indexKeys,patch} :{cname?:string,metadata?:object,indexType?:string,autoIndex?:boolean,indexKeys?:string[],patch?:boolean}={}) : Promise<string> {
     cname ||= getCname(object[this.options.idProperty]) || object.constructor.name;
     const id = object[this.options.idProperty] ||= createId(cname),
         indexes = [];
@@ -794,7 +794,7 @@ Denobase.prototype.put = async function (object: { [key:string]:any }, {cname, m
 }
 
 const _set = db.set.bind(db);
-Denobase.prototype.set = async function (key:any, value:any,metadata:object|undefined) {
+Denodata.prototype.set = async function (key:any, value:any,metadata:object|undefined) {
     value = {data:value,metadata:metadata||value[this.options.metadataProperty]};
     //delete value.data[this.options.metadataProperty];
     const type = typeof(value.metadata?.expires);
@@ -809,4 +809,4 @@ Denobase.prototype.set = async function (key:any, value:any,metadata:object|unde
 }
 
 
-export {Denobase as default,Denobase};
+export {Denodata as default,Denodata,Denodata as Denobase};
