@@ -1,4 +1,4 @@
-import {DONE} from "./src/constants.js"
+import {DONE} from "./constants.js"
 const getValue = (key:string, data:object) :undefined|object => {
     const keys: string[] = key.split(".");
     let result: any = data;
@@ -809,4 +809,4 @@ Denodata.prototype.set = async function (key:any, value:any,metadata:object|unde
 }
 
 
-export {Denodata as default,Denodata,Denodata as Denobase};
+export default Denodata;

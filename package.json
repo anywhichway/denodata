@@ -1,11 +1,11 @@
 {
   "name": "denodata",
-  "version": "0.0.24",
+  "version": "0.0.25",
   "description": "Generalized indexing and search for Deno KV",
   "type": "module",
-  "main": "index.ts",
+  "main": "mod.ts",
   "scripts": {
-    "test": "deno test  --allow-net --unstable"
+    "test": "deno test  --allow-net --unstable ./src/denodata.test.js"
   },
   "repository": {
     "type": "git",

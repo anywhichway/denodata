@@ -434,8 +434,8 @@ The following operators are supported in patterns.
 # Testing
 
 - `constants.js ... 100.000% (3/3)`
-- `index.js ... index.js ...  90.196% (690/765)`
-- `operators.js ... ... 95.330% (347/364)`
+- `denodata.ts ... index.js ...  90.196% (690/765)`
+- `operators.ts ... ... 95.330% (347/364)`
 
 # Release History (Reverse Chronological Order)
 
@@ -443,6 +443,8 @@ The following operators are supported in patterns.
 - Beta  commenced when unit test coverage first exceeded 90%
 - The exposed API is stable. Additional features may be exposed.
 
+2023-07-28 v0.0.25 (Beta)
+  - Restructured file organization to be Deno compliant, i.e. use `mod.ts` instead of `index.js`. The `package.json` file is still manually maintained.
 
 2023-07-27 v0.0.24 (Beta)
   - Some adjustments to README.md to start brining documentation in line with TypeScript.

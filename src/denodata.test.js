@@ -1,5 +1,5 @@
 import { expect } from "https://deno.land/x/expect@v0.2.1/mod.ts";
-import {Denobase} from "./index.ts";
+import Denodata from "./denodata.ts";
 import {operators} from "./operators.ts";
 const {$echoes} = operators;
 
@@ -13,7 +13,7 @@ const test = async (deno) => {
     } else {
         deno = Deno
     }
-    const db = await Denobase();
+    const db = await Denodata();
     const uuidv4 = () => crypto.randomUUID();
 
     class Book {
