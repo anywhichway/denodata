@@ -449,7 +449,7 @@ The following operators are supported in patterns.
 
 2023-07-27 v0.0.23 (Beta)
   - Renamed to `denodata` because `denobase` was already taken on `deno.land/x`.
-  - Tagged as v0.0.23 to force deno.land/x to update.
+  - Tagged as v0.0.23 to force `deno.land/x` to update.
 
 2023-07-27 v0.0.22 (Beta)
   - Converted remainder of repository to TypeScript except some supporting files is ./src directory.
