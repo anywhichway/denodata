@@ -8,5 +8,4 @@ const validateLuhn = num => {
     sum += lastDigit;
     return sum % 10 === 0;
 }
-
 export { validateLuhn, validateLuhn as default };

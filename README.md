@@ -1,6 +1,6 @@
-# denobase
+# denodata
 
-A Deno native indexed database. Backed by the `Deno KV` store, `denobase` has zero external dependencies.
+A Deno native indexed database. Backed by the `Deno KV` store, `denodata` has zero external dependencies.
 
 Both traditional table-oriented and object-oriented index approaches are supported and can be mixed and matched.
 
@@ -15,12 +15,12 @@ A powerful `db.find` function that supports approximate matching and works on bo
 # Usage
 
 ```javascript
-import {Denobase,operators} from "https://unpkg.com/denobase";
-import {Denobase} from "https://unpkg.com/denobase";
-import {operators} from "https://unpkg.com/denobase/operators";
+import {denodata,operators} from "https://unpkg.com/denodata";
+import {denodata} from "https://unpkg.com/denodata";
+import {operators} from "https://unpkg.com/denodata/operators";
 const {$startsWith,$eq} = operators;
 
-const db = await Denobase();
+const db = await denodata();
 ```
 
 ## Use like Deno KV
@@ -35,7 +35,7 @@ await db.delete(["mykey"]);
 
 Primitive keys are automatically converted to the arrays required by Deno KV.
 
-Deno KV does not provide a `db.clear` function. Denobase does.
+Deno KV does not provide a `db.clear` function. denodata does.
 
 ```javascript
 
@@ -60,7 +60,7 @@ await (async () => {
 
 ### Finding objects
 
-Denobase can be searched using literals, built-in operators, or inline functions.
+denodata can be searched using literals, built-in operators, or inline functions.
 
 A class instance can be passed as a pattern or a `cname` or `ctor` (constructor) can be used to restrict searches to a specific collection/class.
 
@@ -138,24 +138,24 @@ await (async () => {
 Not yet available on `deno.land/x`. For now, use: 
 
 ```javascript
-import {Denobase} from "https://unpkg.com/denobase";` 
-import {operators} from "https://unpkg.com/denobase/operators";
+import {denodata} from "https://unpkg.com/denodata";` 
+import {operators} from "https://unpkg.com/denodata/operators";
 ```
 
 Run Deno with the `--allow-net` and  `--unstable` flags.
 
 # API
 
-`db Denobase(options={})`
+`db denodata(options={})`
 
 - Returns an enhanced `Deno KV`.
 
   - `options` has the surface `{idProperty:string="#",metadataProperty:string="^",maxTransactionSize:number=10,indexValueMutator:function}`. At the moment, 10 is the max transaction size supported by `Deno KV` itself. `indexValueMutator` is documented below.
-  - `indexValueMutator` is a function that takes `key` and `cname`. It should either return the key, a modified form of the key, `undefined` or throw an error. The value being indexed is the last item in the `key`. If `undefined` is returned, the property holding the value is not indexed. If an error is thrown the indexing operation is aborted. This is useful for indexing objects that contain properties that contain string values too large for `Deno KV` to handle. The current limit for `Deno KV` is 2048 bytes for an entire key. The Denobase index structure includes property names, so the practical limit for a string is slightly less and depends on the length of property names. If you expect large string values, you must provide an implementation for this function. In advanced cases, it can be used to support vector transformations on values.
+  - `indexValueMutator` is a function that takes `key` and `cname`. It should either return the key, a modified form of the key, `undefined` or throw an error. The value being indexed is the last item in the `key`. If `undefined` is returned, the property holding the value is not indexed. If an error is thrown the indexing operation is aborted. This is useful for indexing objects that contain properties that contain string values too large for `Deno KV` to handle. The current limit for `Deno KV` is 2048 bytes for an entire key. The denodata index structure includes property names, so the practical limit for a string is slightly less and depends on the length of property names. If you expect large string values, you must provide an implementation for this function. In advanced cases, it can be used to support vector transformations on values.
 
 Notes:
 
-- Keys in `denobase` can be any value that is a valid `Deno KV` key component, or they can be a `Deno KV` key. If they are not a `Deno KV` key, they are automatically converted into the arrays normally used by `Deno KV`. For example `"mykey"` is the same as `["mykey"]`.
+- Keys in `denodata` can be any value that is a valid `Deno KV` key component, or they can be a `Deno KV` key. If they are not a `Deno KV` key, they are automatically converted into the arrays normally used by `Deno KV`. For example `"mykey"` is the same as `["mykey"]`.
 
 - Object ids are stored in the property `#`. This can be changed with the database option `idProperty`.
 
@@ -242,7 +242,7 @@ Notes:
 - If `cname` is provided, the object is treated as an instance of `cname`.
 - If `autoIndex` is `true`, the object is indexed using all of its keys.
 
-- `Denobase` serializes `bigints`, `symbols`, `Dates`, and `RegExp` so that they can be restored.
+- `denodata` serializes `bigints`, `symbols`, `Dates`, and `RegExp` so that they can be restored.
 
 `void db.set(key:primitive|Deno KV Key,value:any,?metadata:object)`
 
@@ -275,7 +275,7 @@ This means that the part 1.0 (a number) is ordered before the part 2.0 (also a n
 
 ## Values
 
-Values in Denobase can be arbitrary JavaScript values that are compatible with the structured clone algorithm. This includes:
+Values in denodata can be arbitrary JavaScript values that are compatible with the structured clone algorithm. This includes:
 
 - boolean
 - number
@@ -446,6 +446,9 @@ The following operators are supported in patterns.
 - Until production release, all versions will just have a tertiary version number.
 - Beta  commenced when unit test coverage first exceeded 90%
 - The exposed API is stable. Additional features may be exposed.
+
+2023-07-27 v0.0.23 (Beta)
+  - Renamed to `denodata` because `denobase` was already taken on `deno.land/x`.
 
 2023-07-27 v0.0.22 (Beta)
   - Converted remainder of repository to TypeScript except some supporting files is ./src directory.
