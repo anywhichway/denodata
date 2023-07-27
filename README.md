@@ -15,12 +15,10 @@ A powerful `db.find` function that supports approximate matching and works on bo
 # Usage
 
 ```javascript
-import {denodata,operators} from "https://unpkg.com/denodata";
-import {denodata} from "https://unpkg.com/denodata";
-import {operators} from "https://unpkg.com/denodata/operators";
+import {Denodata,operators} from "https://deno.land/x/denodata";
 const {$startsWith,$eq} = operators;
 
-const db = await denodata();
+const db = await Denodata();
 ```
 
 ## Use like Deno KV
@@ -35,7 +33,7 @@ await db.delete(["mykey"]);
 
 Primitive keys are automatically converted to the arrays required by Deno KV.
 
-Deno KV does not provide a `db.clear` function. denodata does.
+Deno KV does not provide a `db.clear` function. Denodata does.
 
 ```javascript
 
@@ -136,8 +134,7 @@ await (async () => {
 # Installation
 
 ```javascript
-import Denodata from "https://deno.land/x/denodata";
-import {operators} from "https://deno.land/x/denodata/operators";
+import {Denodata,operators} from "https://deno.land/x/denodata";
 ```
 
 Run Deno with the `--allow-net` and  `--unstable` flags.
@@ -442,6 +439,9 @@ The following operators are supported in patterns.
 - Until production release, all versions will just have a tertiary version number.
 - Beta  commenced when unit test coverage first exceeded 90%
 - The exposed API is stable. Additional features may be exposed.
+
+2023-07-28 v0.0.26 (Beta)
+  - Documentation corrections.
 
 2023-07-28 v0.0.25 (Beta)
   - Restructured file organization to be Deno compliant, i.e. use `mod.ts` instead of `index.js`. The `package.json` file is still manually maintained.
