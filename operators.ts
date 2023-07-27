@@ -5,33 +5,17 @@
 //const levenshteinDistance = distance;
 //const toWords = new ToWords();
 
-import {DONE} from "./constants.js";
-
-//soundex from https://gist.github.com/shawndumas/1262659
-function soundex(a) {a=(a+"").toLowerCase().split("");var c=a.shift(),b="",d={a:"",e:"",i:"",o:"",u:"",b:1,f:1,p:1,v:1,c:2,g:2,j:2,k:2,q:2,s:2,x:2,z:2,d:3,t:3,l:4,m:5,n:5,r:6},b=c+a.map(function(a){return d[a]}).filter(function(a,b,e){return 0===b?a!==d[c]:a!==e[b-1]}).join("");return(b+"000").slice(0,4).toUpperCase()};
-
-const validateLuhn = num => {
-    let arr = (num + '')
-        .split('')
-        .reverse()
-        .map(x => parseInt(x));
-    let lastDigit = arr.splice(0, 1)[0];
-    let sum = arr.reduce((acc, val, i) => (i % 2 !== 0 ? acc + val : acc + ((val * 2) % 9) || 9), 0);
-    sum += lastDigit;
-    return sum % 10 === 0;
-}
+import {DONE} from "./src/constants.js";
+import soundex from "./src/soundex.js";
+import validateLuhn from "./src/validate-luhn.js";
 
 
-const operators = {
+type Operator = (right:any, params?: { test?:any}) => any;
+type CompoundOperator = ((...args:any) => any) & {count?:number,possibleCount?:number};
 
-    //$and
-    //$or
-    //$not
-    //$xor
-    //$ior
+const operators:{[key:string]:Operator} = {
 
-
-    $type(right, {test}) {
+    $type(right, {test}={}) {
         return typeof(right)===test ? right : undefined
     },
     $isPrime(value) {
@@ -94,16 +78,16 @@ const operators = {
         return typeof(value)==="string" && (/(?:\d[ -]*?){13,16}/g).test(value) && validateLuhn(value) ? value : undefined;
     },
     $isEmail(value) {
-        return typeof(value)==="string" && (!/(\.{2}|-{2}|_{2})/.test(value) && /^[a-z0-9][a-z0-9-_\.]+@[a-z0-9][a-z0-9-]+[a-z0-9]\.[a-z]{2,10}(?:\.[a-z]{2,10})?$/i).test(value) ? value : undefined;
+        return typeof(value)==="string" && /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(value) ? value : undefined;
     },
     $isURL(value) {
-        return typeof(value)==="string" && (/^(?:https?|ftp):\/\/[^\s/$.?#].[^\s]*$/is).test(value) ? value : undefined;
+        return typeof(value)==="string" && (/^(?:https?|ftp):\/\/[^\s/$.?#].\S*$/is).test(value) ? value : undefined;
     },
     $isUUID(value) {
         return typeof(value)==="string" && (/^[a-f\d]{8}(-[a-f\d]{4}){4}[a-f\d]{8}$/is).test(value) ? value : undefined;
     },
     $isIPv4Address(value) {
-        return typeof(value)==="string" && (/(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9])[.]){3}(([2]([0-4][0-9]|[5][0-5])|[0-1]?[0-9]?[0-9]))/gi).test(value) ? value : undefined;
+        return typeof(value)==="string" && (/((2([0-4][0-9]|5[0-5])|[0-1]?[0-9]?[0-9])[.]){3}((2([0-4][0-9]|5[0-5])|[0-1]?[0-9]?[0-9]))/gi).test(value) ? value : undefined;
     },
     $isIPv6Address(value) {
         return typeof(value)==="string" && (/(([a-fA-F0-9]{1,4}|):){1,7}([a-fA-F0-9]{1,4}|:)/gmi).test(value) ? value : undefined;
@@ -124,112 +108,112 @@ const operators = {
         return  typeof(value)==="string" && (/[0-9]{5}(-[0-9]{4})?/g).test(value) ? value : undefined;
     },
 
-    $lt(right, {test}) {
+    $lt(right, {test}={}) {
         return right<test ? right : DONE
     },
-    $lte(right, {test}) {
+    $lte(right, {test}={}) {
         return right<=test ? right : DONE
     },
-    $eq(right, {test}) {
+    $eq(right, {test}={}) {
         return right==test ? right : undefined
     },
-    $eeq(right, {test}) {
+    $eeq(right, {test}={}) {
         return right===test ? right : undefined
     },
-    $neq(right, {test}) {
+    $neq(right, {test}={}) {
         return right!=test ? right : undefined
     },
-    $gte(right, {test}) {
+    $gte(right, {test}={}) {
         return right>=test ? right : undefined
     },
-    $gt(right, {test}) {
+    $gt(right, {test}={}) {
         return right>test ? right : undefined
     },
 
-    $between(right, {test}) {
+    $between(right, {test}={}) {
         return right>=test[0] && right<=test[1] ? right : right>test[1] ? DONE : undefined
     },
-    $outside(right, {test}) {
+    $outside(right, {test}={}) {
         return right<test[0] || right>test[1] ? right : undefined
     },
-    $in(right, {test}) {
+    $in(right, {test}={}) {
         return test.includes(right) ? right : undefined
     },
-    $nin(right, {test}) {
+    $nin(right, {test}={}) {
         return !test.includes(right) ? right : undefined
     },
-    $includes(right, {test}) {
+    $includes(right, {test}={}) {
         return test.includes && test.includes(right) ? right : undefined
     },
-    $excludes(right, {test}) {
+    $excludes(right, {test}={}) {
         return !test.includes || !test.includes(right) ? right : undefined
     },
 
-    $intersects(right, {test}) {
+    $intersects(right, {test}={}) {
         return Array.isArray(right) && Array.isArray(test)  && right.some((item) => test.includes(item)) ? right : undefined
     },
-    $disjoint(right, {test}) {
+    $disjoint(right, {test}={}) {
         return Array.isArray(right) && Array.isArray(test)  && !right.some((item) => test.includes(item)) ? right : undefined
     },
-    $subset(right, {test}) {
+    $subset(right, {test}={}) {
         return Array.isArray(right) && Array.isArray(test)  && right.every((item) => test.includes(item)) ? right : undefined
     },
-    $superset(right, {test}) {
+    $superset(right, {test}={}) {
         return Array.isArray(right) && Array.isArray(test)  && test.every((item) => right.includes(item)) ? right : undefined
     },
-    $symmetric(right, {test}) {
+    $symmetric(right, {test}={}) {
         return Array.isArray(right) && Array.isArray(test) && right.length===test.length && right.every((item) => test.includes(item)) ? right : undefined
     },
-    $startsWith(right, {test}) {
+    $startsWith(right, {test}={}) {
         test = typeof(test)==="number" ? test+"" : test;
         return right.startsWith && right.startsWith(test) ? right : undefined
     },
-    $endsWith(right, {test}) {
+    $endsWith(right, {test}={}) {
         test = typeof(test)==="number" ? test+"" : test;
         return right.endsWith && right.endsWith(test) ? right : undefined
     },
-    $length(right, {test}) {
+    $length(right, {test}={}) {
         return right.length==test ? right : undefined
     },
 
-    $matches(right, {test}) {
+    $matches(right, {test}={}) {
         const value = typeof(right)==="number" ? right+"" : right;
         return typeof(value)==="string" && value.match(test) ? right : undefined
     },
-    $similar(...args) { // same as $matches, familiar to SQL developers
-        return this.$matches(...args);
+    $similar(right, {test}={}) { // same as $matches, familiar to SQL developers
+        return this.$matches(right, {test});
     },
-    $echoes(right, {test}) {
+    $echoes(right, {test}={}) {
         return typeof(right)==="string" && typeof(test)==="string" && soundex(right)===soundex(test) ? right : undefined
     },
     $soundsLike(...args) {
         return this.$echoes(...args)
     },
 
-    $add(right, {test}) {
+    $add(right, {test}={}) {
         return right+test[0]===test[1] ? right : undefined
     },
-    $subtract(right, {test}) {
+    $subtract(right, {test}={}) {
         return right-test[0]===test[1] ? right : undefined
     },
-    $multiply(right, {test}) {
+    $multiply(right, {test}={}) {
         return right*test[0]===test[1] ? right : undefined
     },
-    $divide(right, {test}) {
+    $divide(right, {test}={}) {
         return right/test[0]===test[1] ? right : undefined
     },
-    $mod(right, {test}) {
+    $mod(right, {test}={}) {
         return right%test[0]===test[1] ? right : undefined
     },
-    $pow(right, {test}) {
+    $pow(right, {test}={}) {
         return right**test[0]===test[1] ? right : undefined
     },
 
 /*
-    $$if(right, {test}) {
+    $$if(right, {test}={}) {
         return right===test[0] ? test[1] : test[2]
     },
-    $$case(right, {test}) {
+    $$case(right, {test}={}) {
         const dflt = test.length/2!==0 ? test.pop() : undefined,
             pair = () => test.length>0 ? [test.shift(), test.shift()] : undefined;
         let next;
@@ -237,47 +221,47 @@ const operators = {
             if(next[0]===right) return next[1];
         }
     },
-    $$concat(right, {test}) {
+    $$concat(right, {test}={}) {
         return Array.isArray(test) && Array.isArray(right) ? right.concat(test) : right + test;
     },
-    $$join(right, {test}) {
+    $$join(right, {test}={}) {
         right = Array.isArray(right) ? right : [right];
         return right.join(test)
     },
-    $$slice(right, {test}) {
+    $$slice(right, {test}={}) {
         return Array.isArray(test) && Array.isArray(right) ? right.slice(...test) : typeof(right)==="string" ? right.substring(...test) : undefined;
     },
-    $$substring(right, {test}) {
+    $$substring(right, {test}={}) {
         return typeof(right)==="string" ? right.substring(...test) : undefined;
     },
-    $$replace(right, {test}) {
+    $$replace(right, {test}={}) {
         return typeof(right)==="string" ? right.replace(...test) : undefined;
     },
-    $$split(right, {test}) {
+    $$split(right, {test}={}) {
 
     },
-    $$trim(right, {test}) {
+    $$trim(right, {test}={}) {
 
     },
-    $$padStart(right, {test}) {
+    $$padStart(right, {test}={}) {
 
     },
-    $$add(right, {test}) {
+    $$add(right, {test}={}) {
         return typeof(right)==="number" ? right+test : undefined;
     },
-    $$subtract(right, {test}) {
+    $$subtract(right, {test}={}) {
         return  typeof(right)==="number" ? right-test : undefined;
     },
-    $$multiply(right, {test}) {
+    $$multiply(right, {test}={}) {
         return  typeof(right)==="number" ? right*test : undefined;
     },
-    $$divide(right, {test}) {
+    $$divide(right, {test}={}) {
         return  typeof(right)==="number" ? right/test : undefined;
     },
-    $$mod(right, {test}) {
+    $$mod(right, {test}={}) {
         return  typeof(right)==="number" ? right%test : undefined
     },
-    $$pow(right, {test}) {
+    $$pow(right, {test}={}) {
         return  typeof(right)==="number" ? right**test : undefined;
     },
     ...["abs", "ceil", "floor", "round", "sign", "sqrt", "trunc","cos","sin","tan","acos","asin","atan","atan2","exp","log","max","min","random"].reduce((acc,fn) => {
@@ -287,16 +271,15 @@ const operators = {
 */
 }
 
-const functionalOperators = Object.entries(operators).reduce((operators,[key,f]) => {
-    operators[key] = function(test) {
-        let join;
-        const op = (left,right) => {
-            return join ? f(left,right) : f(left,{test});
+const functionalOperators:{[key:string]:CompoundOperator} = Object.entries(operators).reduce((operators:{[key:string]:CompoundOperator},[key,f]) => {
+    operators[key] = function(test:any) {
+        let join:boolean = false;
+        return (left:any,right:any):any => {
+            return join ? f(left,right) : f(left,{test}); // join not yet implemented
         }
-        return op;
     }
     operators.$and = (...tests) => {
-        const op = (left,right) => {
+        const op:CompoundOperator = (left,right):any => {
             op.count = 0;
             op.possibleCount = tests.length;
             for(const test of tests) {
@@ -308,11 +291,11 @@ const functionalOperators = Object.entries(operators).reduce((operators,[key,f])
                 op.count += test ? test.count||1 : 1;
             }
             return op.count > 0 ? true : undefined;
-        }
+        };
         return op;
     }
     operators.$or = (...tests) => {
-        const op = (left,right) => {
+        const op:CompoundOperator = (left,right):any => {
             op.count = 0;
             op.possibleCount = 1;
             for(const test of tests) {
@@ -327,7 +310,7 @@ const functionalOperators = Object.entries(operators).reduce((operators,[key,f])
         return op;
     }
     operators.$ior = (...tests) => {
-        const op = (left,right) => {
+        const op:CompoundOperator = (left,right) : any => {
             op.count = 0;
             op.possibleCount = tests.length;
             for(const test of tests) {
@@ -341,7 +324,7 @@ const functionalOperators = Object.entries(operators).reduce((operators,[key,f])
         return op;
     }
     operators.$not = (...tests) => {
-        const op = (left,right) => {
+        const op:CompoundOperator = (left,right):any => {
             op.count = 0;
             op.possibleCount = tests.length;
             for(const test of tests) {

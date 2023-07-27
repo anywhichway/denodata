@@ -1,6 +1,6 @@
 import { expect } from "https://deno.land/x/expect@v0.2.1/mod.ts";
 import {Denobase} from "./index.ts";
-import {operators} from "./operators.js";
+import {operators} from "./operators.ts";
 const {$echoes} = operators;
 
 const test = async (deno) => {

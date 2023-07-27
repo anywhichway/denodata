@@ -1,3 +1,3 @@
 const DONE = Object.freeze({});
 
-export {DONE}
+export {DONE, DONE as default}

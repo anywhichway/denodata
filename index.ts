@@ -1,4 +1,4 @@
-import {DONE} from "./constants.js"
+import {DONE} from "./src/constants.js"
 const getValue = (key:string, data:object) :undefined|object => {
     const keys: string[] = key.split(".");
     let result: any = data;

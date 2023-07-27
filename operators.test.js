@@ -1,5 +1,5 @@
 import { expect } from "https://deno.land/x/expect@v0.2.1/mod.ts";
-import {rawOperators as operators,operators as functionalOperators,DONE} from './operators.js';
+import {rawOperators as operators,operators as functionalOperators,DONE} from './operators.ts';
 
 const test = Deno.test.bind(Deno);
 test("$type",() => {

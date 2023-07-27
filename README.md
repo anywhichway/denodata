@@ -447,6 +447,10 @@ The following operators are supported in patterns.
 - Beta  commenced when unit test coverage first exceeded 90%
 - The exposed API is stable. Additional features may be exposed.
 
+2023-07-27 v0.0.22 (Beta)
+  - Converted remainder of repository to TypeScript except some supporting files is ./src directory.
+  - Simplified and made more generic $isEmail() operator.
+
 2023-07-26 v0.0.21 (Beta)
   - Converted index.js to index.ts since Deno is a TypeScript first environment.
 
