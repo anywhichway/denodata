@@ -12,6 +12,8 @@ Support for `Date`, `RegExp` and `symbol` as part of keys. Support for `symbol` 
 
 A powerful `db.find` function that supports approximate matching and works on both indexes and regular keys with over 50 operators including regular expressions, soundex/echoes, credit card, SSNs and more. If something is missing, it can be added in as little as one line.
 
+A subscription API allows listening for changes to the database.
+
 # Usage
 
 ```javascript
@@ -34,8 +36,6 @@ await db.delete(["mykey"]);
 Primitive keys are automatically converted to the arrays required by Deno KV.
 
 Deno KV does not provide a `db.clear` function. Denodata does.
-
-```javascript
 
 ```javascript
 await db.set("mykey", "myvalue");
@@ -129,6 +129,12 @@ await (async () => {
     console.log(value); // prints Book instance, less efficient, large index scans because of lack of cname
   }
 })();
+db.subscribe({set: {key:1,value:1}},async (value) => {
+  console.log(value); // prints {key:1,value:1} so long as db.set(1,1) is called
+});
+db.subscribe({delete: (key) => key<10 ? key : undefined},async (value) => {
+  console.log(value); // prints key so long as db.delete(key) is called with value less than 10
+});
 ```
 
 # Installation
@@ -241,6 +247,11 @@ Notes:
 
 - Works like `Deno KV.set`. Does not manage indexes or do specialized serialization.
 - See notes at start of API section regarding `key` and `value` types.
+
+`db.subscribe(on:{delete?:any,patch?:any,put?:any,set?:any},callback:(arg1:any,arg2?:any)=>void,{cname?:string,metadata?:{[key:string]:any}}):void`
+
+- Calls the `callback` with the same signature as `db.delete`, `db.patch`, `db.put`, or `db.set` if the value or key and value in the `on` pattern, as well as `cname` and `metadata` match the call to `db.delete`, `db.patch`, `db.put`, or `db.set`.
+
 
 # Key and Value Space
 
@@ -431,7 +442,7 @@ The following operators are supported in patterns.
 # Testing
 
 - `constants.js ... 100.000% (3/3)`
-- `denodata.ts ... index.js ...  90.196% (690/765)`
+- `denodata.ts ...  82.809% (684/826)`
 - `operators.ts ... ... 95.330% (347/364)`
 
 # Release History (Reverse Chronological Order)
@@ -439,6 +450,10 @@ The following operators are supported in patterns.
 - Until production release, all versions will just have a tertiary version number.
 - Beta  commenced when unit test coverage first exceeded 90%
 - The exposed API is stable. Additional features may be exposed.
+
+
+2023-08-09 v0.0.27 (Beta)
+  - Exposed subscription API. Test coverage dropped below 90% as a result.
 
 2023-07-28 v0.0.26 (Beta)
   - Documentation corrections.

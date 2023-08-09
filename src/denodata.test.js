@@ -460,6 +460,70 @@ const test = async (deno) => {
         expect(sum.value.value).toEqual(1n);
     })
 
+    deno.test("subscribe delete", async (t) => {
+        return new Promise(async (resolve,reject) => {
+            await db.subscribe({delete: 1},(value) => {
+                try {
+                    expect(value).toEqual(1);
+                    resolve();
+                } catch(e) {
+                    reject(e);
+                }
+            });
+            await db.delete(1);
+        });
+    })
+
+    deno.test("subscribe delete - function test", async (t) => {
+        return new Promise(async (resolve,reject) => {
+            await db.subscribe({delete: (value) => value===1 ? value : undefined},(value) => {
+                try {
+                    expect(value).toEqual(1);
+                    resolve();
+                } catch(e) {
+                    reject(e);
+                }
+            });
+            await db.delete(1);
+        });
+    })
+
+    deno.test("subscribe set", async (t) => {
+       return new Promise(async (resolve,reject) => {
+           db.subscribe({set: {key:1,value:1}},async (key,value) => {
+               try {
+                     expect(key).toEqual(1);
+                     expect(value).toEqual(1);
+                     resolve();
+               } catch(e) {
+                   reject(e);
+               } finally {
+                   await db.delete(1);
+               }
+           });
+           await db.set(1,1);
+       });
+    })
+
+    deno.test("subscribe set - function test", async (t) => {
+        return new Promise(async (resolve,reject) => {
+            db.subscribe({set: {key:1,value:(value) => value===1 ? value : undefined}},async (key,value) => {
+                try {
+                    expect(key).toEqual(1);
+                    expect(value).toEqual(1);
+                    resolve();
+                } catch(e) {
+                    reject(e);
+                } finally {
+                    await db.delete(1);
+                }
+            });
+            await db.set(1,1);
+        });
+    })
+
+
+
     return async () => {
         const errors = [],
             start = Date.now();
