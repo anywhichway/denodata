@@ -1,5 +1,5 @@
 import { expect } from "https://deno.land/x/expect@v0.2.1/mod.ts";
-import {Denobase} from "./index.ts";
+import Denodata from "./denodata.ts";
 import {operators} from "./operators.ts";
 const {$echoes} = operators;
 
@@ -13,7 +13,7 @@ const test = async (deno) => {
     } else {
         deno = Deno
     }
-    const db = await Denobase();
+    const db = await Denodata();
     const uuidv4 = () => crypto.randomUUID();
 
     class Book {
@@ -459,6 +459,70 @@ const test = async (deno) => {
         const sum = await db.get("count");
         expect(sum.value.value).toEqual(1n);
     })
+
+    deno.test("subscribe delete", async (t) => {
+        return new Promise(async (resolve,reject) => {
+            await db.subscribe({delete: 1},(value) => {
+                try {
+                    expect(value).toEqual(1);
+                    resolve();
+                } catch(e) {
+                    reject(e);
+                }
+            });
+            await db.delete(1);
+        });
+    })
+
+    deno.test("subscribe delete - function test", async (t) => {
+        return new Promise(async (resolve,reject) => {
+            await db.subscribe({delete: (value) => value===1 ? value : undefined},(value) => {
+                try {
+                    expect(value).toEqual(1);
+                    resolve();
+                } catch(e) {
+                    reject(e);
+                }
+            });
+            await db.delete(1);
+        });
+    })
+
+    deno.test("subscribe set", async (t) => {
+       return new Promise(async (resolve,reject) => {
+           db.subscribe({set: {key:1,value:1}},async (key,value) => {
+               try {
+                     expect(key).toEqual(1);
+                     expect(value).toEqual(1);
+                     resolve();
+               } catch(e) {
+                   reject(e);
+               } finally {
+                   await db.delete(1);
+               }
+           });
+           await db.set(1,1);
+       });
+    })
+
+    deno.test("subscribe set - function test", async (t) => {
+        return new Promise(async (resolve,reject) => {
+            db.subscribe({set: {key:1,value:(value) => value===1 ? value : undefined}},async (key,value) => {
+                try {
+                    expect(key).toEqual(1);
+                    expect(value).toEqual(1);
+                    resolve();
+                } catch(e) {
+                    reject(e);
+                } finally {
+                    await db.delete(1);
+                }
+            });
+            await db.set(1,1);
+        });
+    })
+
+
 
     return async () => {
         const errors = [],

@@ -1,10 +1,6 @@
-# DEPRECATED/MOVED
+# denodata
 
-Due to a naming conflict with `deno.land/x` this project has been moved to [denodata](https://www.npmjs.com/package/denodata)
-
----
-
-A Deno native indexed database. Backed by the `Deno KV` store, `denobase` has zero external dependencies.
+A Deno native indexed database. Backed by the `Deno KV` store, `denodata` has zero external dependencies.
 
 Both traditional table-oriented and object-oriented index approaches are supported and can be mixed and matched.
 
@@ -16,15 +12,15 @@ Support for `Date`, `RegExp` and `symbol` as part of keys. Support for `symbol` 
 
 A powerful `db.find` function that supports approximate matching and works on both indexes and regular keys with over 50 operators including regular expressions, soundex/echoes, credit card, SSNs and more. If something is missing, it can be added in as little as one line.
 
+A subscription API allows listening for changes to the database.
+
 # Usage
 
 ```javascript
-import {Denobase,operators} from "https://unpkg.com/denobase";
-import {Denobase} from "https://unpkg.com/denobase";
-import {operators} from "https://unpkg.com/denobase/operators";
+import {Denodata,operators} from "https://deno.land/x/denodata";
 const {$startsWith,$eq} = operators;
 
-const db = await Denobase();
+const db = await Denodata();
 ```
 
 ## Use like Deno KV
@@ -39,9 +35,7 @@ await db.delete(["mykey"]);
 
 Primitive keys are automatically converted to the arrays required by Deno KV.
 
-Deno KV does not provide a `db.clear` function. Denobase does.
-
-```javascript
+Deno KV does not provide a `db.clear` function. Denodata does.
 
 ```javascript
 await db.set("mykey", "myvalue");
@@ -64,7 +58,7 @@ await (async () => {
 
 ### Finding objects
 
-Denobase can be searched using literals, built-in operators, or inline functions.
+denodata can be searched using literals, built-in operators, or inline functions.
 
 A class instance can be passed as a pattern or a `cname` or `ctor` (constructor) can be used to restrict searches to a specific collection/class.
 
@@ -135,31 +129,32 @@ await (async () => {
     console.log(value); // prints Book instance, less efficient, large index scans because of lack of cname
   }
 })();
+db.subscribe({set: {key:1,value:1}},async (value) => {
+  console.log(value); // prints {key:1,value:1} so long as db.set(1,1) is called
+});
+db.subscribe({delete: (key) => key<10 ? key : undefined},async (value) => {
+  console.log(value); // prints key so long as db.delete(key) is called with value less than 10
+});
 ```
 
 # Installation
 
-Not yet available on `deno.land/x`. For now, use: 
-
 ```javascript
-import {Denobase} from "https://unpkg.com/denobase";` 
-import {operators} from "https://unpkg.com/denobase/operators";
+import {Denodata,operators} from "https://deno.land/x/denodata";
 ```
 
 Run Deno with the `--allow-net` and  `--unstable` flags.
 
 # API
 
-`db Denobase(options={})`
-
-- Returns an enhanced `Deno KV`.
+`Denodata(options={}):Proxy<Deno.Kv>`
 
   - `options` has the surface `{idProperty:string="#",metadataProperty:string="^",maxTransactionSize:number=10,indexValueMutator:function}`. At the moment, 10 is the max transaction size supported by `Deno KV` itself. `indexValueMutator` is documented below.
-  - `indexValueMutator` is a function that takes `key` and `cname`. It should either return the key, a modified form of the key, `undefined` or throw an error. The value being indexed is the last item in the `key`. If `undefined` is returned, the property holding the value is not indexed. If an error is thrown the indexing operation is aborted. This is useful for indexing objects that contain properties that contain string values too large for `Deno KV` to handle. The current limit for `Deno KV` is 2048 bytes for an entire key. The Denobase index structure includes property names, so the practical limit for a string is slightly less and depends on the length of property names. If you expect large string values, you must provide an implementation for this function. In advanced cases, it can be used to support vector transformations on values.
+  - `indexValueMutator` is a function that takes `key` and `cname`. It should either return the key, a modified form of the key, `undefined` or throw an error. The value being indexed is the last item in the `key`. If `undefined` is returned, the property holding the value is not indexed. If an error is thrown the indexing operation is aborted. This is useful for indexing objects that contain properties that contain string values too large for `Deno KV` to handle. The current limit for `Deno KV` is 2048 bytes for an entire key. The denodata index structure includes property names, so the practical limit for a string is slightly less and depends on the length of property names. If you expect large string values, you must provide an implementation for this function. In advanced cases, it can be used to support vector transformations on values.
 
 Notes:
 
-- Keys in `denobase` can be any value that is a valid `Deno KV` key component, or they can be a `Deno KV` key. If they are not a `Deno KV` key, they are automatically converted into the arrays normally used by `Deno KV`. For example `"mykey"` is the same as `["mykey"]`.
+- Keys in `denodata` can be any value that is a valid `Deno KV` key component, or they can be a `Deno KV` key. If they are not a `Deno KV` key, they are automatically converted into the arrays normally used by `Deno KV`. For example `"mykey"` is the same as `["mykey"]`.
 
 - Object ids are stored in the property `#`. This can be changed with the database option `idProperty`.
 
@@ -167,7 +162,7 @@ Notes:
 
 - For the v0.x.x releases only the top level database functions have been modified to support enhanced capabilities. Methods on transactions, e.g. `db.atomic().set()`, are native and do not support automatic key conversion, metadata, etc.
 
-`void db.delete(keyOrPattern:primitive|UInt8Array|array|object,{?cname:string,?indexOnly:bool,?find:boolean})`
+`db.delete(keyOrPattern:primitive|UInt8Array|array|object,{?cname:string,?indexOnly:bool,?find:boolean}):void`
 
 - Deletes a record using key or pattern. Updates indexes.
 
@@ -183,7 +178,7 @@ Notes:
 
 - If `indexOnly` is `true` and `keyOrPattern` is an object, only the index entries are deleted.
 
-`Entry *db.find(pattern:array|object,{?cname:string,?ctor:function,?valueMatch:function|object,?minScore:number,?select:function|object,?offset:number,?limit:number})`
+`*db.find(pattern:array|object,{?cname:string,?ctor:function,?valueMatch:function|object,?minScore:number,?select:function|object,?offset:number,?limit:number}):Entry`
 
 - `Entry` is an object, but not a formal class, with the following properties:
 
@@ -227,11 +222,11 @@ Notes:
 
 - `offset` indicates how many entries to skip before returning results.
 
-`Entry db.get(key:primitive|UInt8Array|array)`
+`db.get(key:primitive|UInt8Array|array):Entry`
 
 - Works like `Deno KV.get` except that if the entry value is a class instance saved using `db.put`, it is automatically deserialized and instantiated.
 
-`Entry db.patch(value:object|function,{?cname:string,?metadata:object,?pattern:array|object})`
+`db.patch(value:object|function,{?cname:string,?metadata:object,?pattern:array|object}):Entry`
 
 - If value is an object and `pattern` is not provided, `db.patch` finds the object in the database based on its id, applies the changes, updates indexes, and saves the object.
 - If `pattern` is provided, it is used as an argument to `db.find` and all matching entries are updated using `value`. If `value` is a primitive, it is used as the new value. If it is an object, it is merged with the existing value. If it is a function, it is called with the existing value and the return value is used as the new value. If the function returns `undefined`, the value is not changed.
@@ -240,18 +235,23 @@ Notes:
 - If `cname` is provided, the object is treated as an instance of `cname`.
 - If `metadata` is provided, it is merged with the existing metadata.
 
-`void db.put(object,{?cname:string,?metadata:object,?autoIndex:boolean})` 
+`db.put(object,{?cname:string,?metadata:object,?autoIndex:boolean}):void` 
 
 - Takes an object, assigns an id if necessary, populates/updates indexes, and serializes then saves the object using the id as the key.
 - If `cname` is provided, the object is treated as an instance of `cname`.
 - If `autoIndex` is `true`, the object is indexed using all of its keys.
 
-- `Denobase` serializes `bigints`, `symbols`, `Dates`, and `RegExp` so that they can be restored.
+- `denodata` serializes `bigints`, `symbols`, `Dates`, and `RegExp` so that they can be restored.
 
-`void db.set(key:primitive|Deno KV Key,value:any,?metadata:object)`
+`db.set(key:primitive|Deno KV Key,value:any,?metadata:object):void`
 
 - Works like `Deno KV.set`. Does not manage indexes or do specialized serialization.
 - See notes at start of API section regarding `key` and `value` types.
+
+`db.subscribe(on:{delete?:any,patch?:any,put?:any,set?:any},callback:(arg1:any,arg2?:any)=>void,{cname?:string,metadata?:{[key:string]:any}}):void`
+
+- Calls the `callback` with the same signature as `db.delete`, `db.patch`, `db.put`, or `db.set` if the value or key and value in the `on` pattern, as well as `cname` and `metadata` match the call to `db.delete`, `db.patch`, `db.put`, or `db.set`.
+
 
 # Key and Value Space
 
@@ -279,7 +279,7 @@ This means that the part 1.0 (a number) is ordered before the part 2.0 (also a n
 
 ## Values
 
-Values in Denobase can be arbitrary JavaScript values that are compatible with the structured clone algorithm. This includes:
+Values in denodata can be arbitrary JavaScript values that are compatible with the structured clone algorithm. This includes:
 
 - boolean
 - number
@@ -442,14 +442,32 @@ The following operators are supported in patterns.
 # Testing
 
 - `constants.js ... 100.000% (3/3)`
-- `index.js ... index.js ...  90.196% (690/765)`
-- `operators.js ... ... 95.330% (347/364)`
+- `denodata.ts ...  82.809% (684/826)`
+- `operators.ts ... ... 95.330% (347/364)`
 
 # Release History (Reverse Chronological Order)
 
 - Until production release, all versions will just have a tertiary version number.
 - Beta  commenced when unit test coverage first exceeded 90%
 - The exposed API is stable. Additional features may be exposed.
+
+
+2023-08-09 v0.0.27 (Beta)
+  - Exposed subscription API. Test coverage dropped below 90% as a result.
+
+2023-07-28 v0.0.26 (Beta)
+  - Documentation corrections.
+
+2023-07-28 v0.0.25 (Beta)
+  - Restructured file organization to be Deno compliant, i.e. use `mod.ts` instead of `index.js`. The `package.json` file is still manually maintained.
+
+2023-07-27 v0.0.24 (Beta)
+  - Some adjustments to README.md to start brining documentation in line with TypeScript.
+  - Modified index.ts to export `Denodata` as well as an alias `Denobase` to preserve backward compatibility.
+
+2023-07-27 v0.0.23 (Beta)
+  - Renamed to `denodata` because `denobase` was already taken on `deno.land/x`.
+  - Tagged as v0.0.23 to force `deno.land/x` to update.
 
 2023-07-27 v0.0.22 (Beta)
   - Converted remainder of repository to TypeScript except some supporting files is ./src directory.

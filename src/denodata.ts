@@ -1,4 +1,4 @@
-import {DONE} from "./src/constants.js"
+import {DONE} from "./constants.js"
 const getValue = (key:string, data:object) :undefined|object => {
     const keys: string[] = key.split(".");
     let result: any = data;
@@ -57,7 +57,7 @@ const isId = (value:any) => {
 }
 
 type ScoredFunction = Function & {score?:number};
-const matchKeys:ScoredFunction = (pattern:Array<any>, target:Array<any>) => {
+const matchKeys:ScoredFunction = (pattern:Array<any>, target:Array<any>):boolean => {
     matchKeys.score = 1;
     return pattern.every((item, i) => {
         const type = typeof (item);
@@ -89,6 +89,12 @@ const matchKeys:ScoredFunction = (pattern:Array<any>, target:Array<any>) => {
 const selector = (value:any,pattern:any,{root=value,parent,key}:{root?:any,parent?:object,key?:string}={}) : any => {
     const ptype = typeof(pattern),
         vtype = typeof(value);
+    if(value===pattern) {
+        return value;
+    }
+    if(ptype==="number" && vtype==="number") {
+        return  isNaN(pattern) && isNaN(value) ? value : undefined
+    }
     if(ptype==="function") {
         return pattern(value,{root,parent,key});
     }
@@ -137,8 +143,6 @@ const selector = (value:any,pattern:any,{root=value,parent,key}:{root?:any,paren
         }
         return value;
     }
-    if(ptype==="number" && vtype==="number" && isNaN(pattern) && isNaN(value)) return value;
-    return pattern===value ? value : undefined;
 }
 
 const serializeKey = (key:any,skip:any[]=["bigint"]) => {
@@ -251,10 +255,10 @@ const uuidv4 = (): string => crypto.randomUUID();
 
 const db:{[key:string|symbol]:any} = (await Deno.openKv() as {[key:string|symbol]:any});
 
-type DenobaseOptions = {maxTransactionSize?:number,idProperty?:string,metadataProperty?:string,indexValueMutator?:(value:any)=>any};
+type DenodataOptions = {maxTransactionSize?:number,idProperty?:string,metadataProperty?:string,indexValueMutator?:(value:any)=>any};
 
-function Denobase(options:DenobaseOptions) {
-    const me = (Object.create(Denobase.prototype) as {[key:string|symbol]:any});
+function Denodata(options:DenodataOptions) {
+    const me = (Object.create(Denodata.prototype) as {[key:string|symbol]:any});
     Object.assign(me.options,options);
     me.options.maxTransactionSize ||= 10;
     me.options.idProperty ||= "#";
@@ -268,13 +272,13 @@ function Denobase(options:DenobaseOptions) {
     });
 }
 
-Denobase.prototype = db;
+Denodata.prototype = db;
 const options:{[key:string]:any} = {};
-Denobase.prototype.options = options;
-Denobase.prototype.schema = {};
-Denobase.prototype.indexes = {};
+Denodata.prototype.options = options;
+Denodata.prototype.schema = {};
+Denodata.prototype.indexes = {};
 
-Denobase.prototype.createSchema = function ({
+Denodata.prototype.createSchema = function ({
                                   cname,
                                   ctor,
                                   primaryKey,
@@ -295,7 +299,7 @@ Denobase.prototype.createSchema = function ({
     this.schema[(cname as string)] = {cname, ctor, primaryKey, indexes, $schema, $id, title, description, properties, required};
 }
 
-Denobase.prototype.createIndex = async function ({name, indexType="object", ctor,cname,keys}:{name?:string,indexType?:string,ctor?:Function,cname?:string,keys?:string[]} = {}) {
+Denodata.prototype.createIndex = async function ({name, indexType="object", ctor,cname,keys}:{name?:string,indexType?:string,ctor?:Function,cname?:string,keys?:string[]} = {}) {
     if (!keys || !Array.isArray(keys) || !keys.length) throw new Error("Index must have at least one key");
     name ||= keys.join("_");
     if(!cname && !ctor) throw new Error("Either cname or ctor must be provided when creating an index");
@@ -320,15 +324,19 @@ Denobase.prototype.createIndex = async function ({name, indexType="object", ctor
     return result;
 }*/
 
-Denobase.prototype.clear = async function () {
+Denodata.prototype.clear = async function () {
     for await(const {key} of this.list({start: [new Uint8Array([])], end: [true]})) {
         await this.delete(key);
     }
 }
 
 const _delete = db.delete.bind(db);
-Denobase.prototype.delete = async function (value:any, {cname, indexOnly,find}:{cname?:string,indexOnly?:boolean,find?:boolean} = {}) {
-    const type = typeof (value);
+Denodata.prototype.delete = async function (value:any, {cname, indexOnly,find}:{cname?:string,indexOnly?:boolean,find?:boolean} = {}) {
+    const type = typeof (value),
+        originalValue:any = value;
+    if(type!=="object" && !Array.isArray(value)) {
+        value = [value]
+    }
     if (Array.isArray( value)) {
         const key = toPattern(toKey(value));
         if (value.length === 1 && isId(value[0])) {
@@ -371,54 +379,53 @@ Denobase.prototype.delete = async function (value:any, {cname, indexOnly,find}:{
     } else if (value && type === "object") {
         if(value instanceof Uint8Array) {
             await _delete([value]);
-            return
-        }
-        if(value instanceof RegExp || value instanceof Date) {
+        } else if(value instanceof RegExp || value instanceof Date) {
             await _delete(toKey(value));
-            return
-        }
-        const id = value[this.options.idProperty];
-        if (id) {
-            cname ||= getCname(id) || value.constructor.name;
-            value = serializeValue(value);
-            const indexes:({indexType:string,indexKeys:string[]})[] = [];
-            Object.values(this.schema[(cname as string)]?.indexes || {}).forEach((value) => {
-                const {indexType, keys} = (value as {[key:string]:any});
-                indexes.push({indexType, indexKeys:keys})
-            });
-            for (const {indexType, indexKeys} of indexes) {
-                const keys = serializeKey(this.getKeys(value, indexKeys, {indexType, cname})),
-                    indexPrefix = toIndexPrefix(indexType);
-                let keyBatch = keys.splice(0, this.options.maxTransactionSize);
-                while (keyBatch.length > 0) {
-                    const tn = this.atomic();
-                    for (let key of keyBatch) {
-                        key = this.options.indexValueMutator(key,cname);
-                        if(key && !key.some((item:any) => item==null)) {
-                            tn.delete([indexPrefix, ...key, id]);
-                        }
-                    }
-                    await tn.commit();
-                    keyBatch = keys.splice(0, this.options.maxTransactionSize);
-                }
-            }
-            if (!indexOnly) {
-                await _delete([id]);
-            }
-        } else if(find) {
-            for await (const entry of this.find(value,{cname})) {
-                await _delete(entry.key);
-            }
         } else {
-            throw new Error("Can't delete object that does not have an id unless find option is true");
+            const id = value[this.options.idProperty];
+            if (id) {
+                cname ||= getCname(id) || value.constructor.name;
+                const metadata = value[this.options.metadataProperty];
+                value = serializeValue(value);
+                const indexes: ({ indexType: string, indexKeys: string[] })[] = [];
+                Object.values(this.schema[(cname as string)]?.indexes || {}).forEach((value) => {
+                    const {indexType, keys} = (value as { [key: string]: any });
+                    indexes.push({indexType, indexKeys: keys})
+                });
+                for (const {indexType, indexKeys} of indexes) {
+                    const keys = serializeKey(this.getKeys(value, indexKeys, {indexType, cname})),
+                        indexPrefix = toIndexPrefix(indexType);
+                    let keyBatch = keys.splice(0, this.options.maxTransactionSize);
+                    while (keyBatch.length > 0) {
+                        const tn = this.atomic();
+                        for (let key of keyBatch) {
+                            key = this.options.indexValueMutator(key, cname);
+                            if (key && !key.some((item: any) => item == null)) {
+                                tn.delete([indexPrefix, ...key, id]);
+                            }
+                        }
+                        await tn.commit();
+                        keyBatch = keys.splice(0, this.options.maxTransactionSize);
+                    }
+                }
+                if (!indexOnly) {
+                    await _delete([id]);
+                }
+            } else if (find) {
+                for await (const entry of this.find(value, {cname})) {
+                    await _delete(entry.key);
+                }
+            } else {
+                throw new Error("Can't delete object that does not have an id unless find option is true");
+            }
         }
-    } else {
-        await db.delete([value]);
     }
+    const args = [deserializeSpecial(null,originalValue), {cname, indexOnly,find}];
+    await handleEvent("delete", Object.assign({value:originalValue}, cname ? {cname} : undefined),args);
 }
 
 //valueMatch,select,{cname,fulltext,scan,sort,sortable,minScore,limit=Infinity,offset=0}={}
-Denobase.prototype.find = async function* (pattern:({[key:string]:any}|any)=null, {
+Denodata.prototype.find = async function* (pattern:({[key:string]:any}|any)=null, {
     indexName,
     cname,
     ctor,
@@ -573,7 +580,7 @@ Denobase.prototype.find = async function* (pattern:({[key:string]:any}|any)=null
     }
 }
 
-Denobase.prototype.findAll = async function(...args:any[]) {
+Denodata.prototype.findAll = async function(...args:any[]) {
     const results = [];
     for await (const result of this.find(...args)) {
         results.push(result);
@@ -582,7 +589,7 @@ Denobase.prototype.findAll = async function(...args:any[]) {
 }
 
 const _get = db.get.bind(db);
-Denobase.prototype.get = async function (key:any) {
+Denodata.prototype.get = async function (key:any) {
     const entry = deserializeSpecial(null,await _get(toKey(key)));
     if(entry.value?.data!==undefined) {
         entry.metadata = entry.value.metadata;
@@ -600,7 +607,7 @@ Denobase.prototype.get = async function (key:any) {
     return entry;
 }
 
-Denobase.prototype.getKeys = function(target:object, value:any, schemaKeys:string[][], {indexType, cname, noTokens}:{[key:string]:any} = {}, {hasRegExp, keys = []}:{hasRegExp?:boolean,keys?:any[]} = {}) {
+Denodata.prototype.getKeys = function(target:object, value:any, schemaKeys:string[][], {indexType, cname, noTokens}:{[key:string]:any} = {}, {hasRegExp, keys = []}:{hasRegExp?:boolean,keys?:any[]} = {}) {
     noTokens ||= this.options.index?.fulltext || this.options.index?.trigram;
     if (target && typeof (target) === "object" && !Array.isArray(target)) {
         return this.getKeys([], target, value, schemaKeys);
@@ -655,7 +662,7 @@ Denobase.prototype.getKeys = function(target:object, value:any, schemaKeys:strin
     return keys;
 }
 
-Denobase.prototype.matchValue = function(pattern:object, target:object) {
+Denodata.prototype.matchValue = function(pattern:object, target:object) {
     const targetKeys = this.getKeys(target);
     this.matchValue.score = 1;
     if (this.getKeys(pattern).every((key:any[]) => {
@@ -667,11 +674,13 @@ Denobase.prototype.matchValue = function(pattern:object, target:object) {
     }
 }
 
-Denobase.prototype.patch = async function (value:any, {cname,pattern,metadata}:{cname?:string|undefined,pattern?:object|undefined,metadata?:object|undefined} = {}) {
-    const type = typeof (value);
+Denodata.prototype.patch = async function (value:any, {cname,pattern,metadata}:{cname?:string|undefined,pattern?:object|undefined,metadata?:object|undefined} = {}) {
+    const type = typeof (value),
+        originalValue = value;
     if (value && type==="object" && !(value[this.options.idProperty] || pattern)) {
         throw new TypeError(`Can't patch non-object or object without id key if there is no pattern.`);
     }
+    cname ||= getCname(value[this.options.idProperty]);
     if(value && type==="object") {
         try {
             value = structuredClone(value);
@@ -696,7 +705,6 @@ Denobase.prototype.patch = async function (value:any, {cname,pattern,metadata}:{
     }
     if(metadata) value[this.options.metadataProperty] = metadata;
     value = serializeValue(value);
-    cname ||= getCname(value[this.options.idProperty]);
     const indexes: any[] = [];
     Object.values(this.schema[(cname as string)]?.indexes || {}).forEach((value) => {
         const {type,keys} = (value as {[key:string]:any});
@@ -705,47 +713,51 @@ Denobase.prototype.patch = async function (value:any, {cname,pattern,metadata}:{
     const id = value[this.options.idProperty],
         entry = await this.get([id]),
         patched = entry.value || {};
+    let result;
     if (indexes.length === 0) {
         Object.assign(patched, value)
-        await this.put(patched);
-        return id;
-    }
-    for (const {indexType, indexKeys} of indexes) {
-        const oldIndexKeys = this.getKeys(patched, indexKeys, {indexType, cname}),
-            newIndexKeys = this.getKeys(value, indexKeys, {indexType, cname}),
-            removeKeys = oldIndexKeys.reduce((removeKeys:any[], oldKey:any[]) => {
-                if (newIndexKeys.some((newKey:any[]) => matchKeys(oldKey, newKey))) {
+        result = this.put(patched);
+    } else {
+        for (const {indexType, indexKeys} of indexes) {
+            const oldIndexKeys = this.getKeys(patched, indexKeys, {indexType, cname}),
+                newIndexKeys = this.getKeys(value, indexKeys, {indexType, cname}),
+                removeKeys = oldIndexKeys.reduce((removeKeys: any[], oldKey: any[]) => {
+                    if (newIndexKeys.some((newKey: any[]) => matchKeys(oldKey, newKey))) {
+                        return removeKeys;
+                    }
+                    removeKeys.push(serializeKey(oldKey));
                     return removeKeys;
+                }, []),
+                indexPrefix = toIndexPrefix(indexType);
+            let keys = removeKeys.splice(0, this.options.maxTransactionSize);
+            while (keys.length > 0) {
+                const tn = this.atomic();
+                for (let key of keys) {
+                    key = this.options.indexValueMutator(key, cname);
+                    if (key && !key.some((item: any) => item == null)) {
+                        tn.delete([indexPrefix, ...key, id]);
+                    }
                 }
-                removeKeys.push(serializeKey(oldKey));
-                return removeKeys;
-            }, []),
-            indexPrefix = toIndexPrefix(indexType);
-        let keys = removeKeys.splice(0, this.options.maxTransactionSize);
-        while (keys.length > 0) {
-            const tn = this.atomic();
-            for (let key of keys) {
-                key = this.options.indexValueMutator(key,cname);
-                if(key && !key.some((item:any)=>item==null)) {
-                    tn.delete([indexPrefix, ...key, id]);
-                }
+                await tn.commit();
+                keys = removeKeys.splice(0, this.options.maxTransactionSize);
             }
-            await tn.commit();
-            keys = removeKeys.splice(0, this.options.maxTransactionSize);
         }
+        if (metadata) { // prepare to patch metadata separately
+            delete value[this.options.metadataProperty];
+        }
+        Object.assign(patched, value);
+        if (metadata) { // patch metadata separately
+            patched[this.options.metadataProperty] ||= {};
+            Object.assign(patched[this.options.metadataProperty], metadata);
+        }
+        result = this.put(patched, {cname, patch: true});  // should put inside a transaction
     }
-    if(metadata) { // prepare to patch metadata separately
-        delete value[this.options.metadataProperty];
-    }
-    Object.assign(patched, value);
-    if(metadata) { // patch metadata separately
-        patched[this.options.metadataProperty] ||= {};
-        Object.assign(patched[this.options.metadataProperty], metadata);
-    }
-    return await this.put(patched, {cname,patch:true});  // should put inside a transaction
+    const args = [deserializeSpecial(null,originalValue), {cname,pattern,metadata}];
+    await handleEvent("patch",Object.assign(  {value},cname ? {cname} : undefined,metadata ? {metadata} : undefined),args);
+    return result;
 }
 
-Denobase.prototype.put = async function (object: { [key:string]:any }, {cname, metadata,indexType, autoIndex,indexKeys,patch} :{cname?:string,metadata?:object,indexType?:string,autoIndex?:boolean,indexKeys?:string[],patch?:boolean}={}) : Promise<string> {
+Denodata.prototype.put = async function (object: { [key:string]:any }, {cname, metadata,indexType, autoIndex,indexKeys,patch} :{cname?:string,metadata?:object,indexType?:string,autoIndex?:boolean,indexKeys?:string[],patch?:boolean}={}) : Promise<string> {
     cname ||= getCname(object[this.options.idProperty]) || object.constructor.name;
     const id = object[this.options.idProperty] ||= createId(cname),
         indexes = [];
@@ -764,38 +776,43 @@ Denobase.prototype.put = async function (object: { [key:string]:any }, {cname, m
     }
     if (indexes.length === 0) {
         await this.set([id], object);
-        return id;
-    }
-    if(!patch) {
-        await this.delete([id], {indexOnly: true});
-    } // clears all index entries
-    for (let i = 0; i < indexes.length; i++) {
-        let {indexType = "object", indexKeys} = indexes[i];
-        const keys = serializeKey(this.getKeys(object, indexKeys ? [indexKeys] : null, {indexType, cname})),
-            indexPrefix = toIndexPrefix(indexType);
-        //if(keys.some((key) => key.some((item)=>item==null))) {
-        //  throw new TypeError(`Can't index null or undefined value for keys ${JSON.stringify(indexKeys)} for index ${name} on object ${JSON.stringify(object)}`);
-        //}
-        let keyBatch = keys.splice(0, this.options.maxTransactionSize);
-        while (keyBatch.length > 0) {
-            const tn = this.atomic();
-            for (let key of keyBatch) {
-                key = this.options.indexValueMutator(key,cname);
-                if(key && !key.some((item:any)=>item==null)) {
-                    tn.set([indexPrefix, ...key, id], 0); // 0 is correct, index entries are just keys
+    } else {
+        if (!patch) {
+            await this.delete([id], {indexOnly: true});
+        } // clears all index entries
+        for (let i = 0; i < indexes.length; i++) {
+            let {indexType = "object", indexKeys} = indexes[i];
+            const keys = serializeKey(this.getKeys(object, indexKeys ? [indexKeys] : null, {indexType, cname})),
+                indexPrefix = toIndexPrefix(indexType);
+            //if(keys.some((key) => key.some((item)=>item==null))) {
+            //  throw new TypeError(`Can't index null or undefined value for keys ${JSON.stringify(indexKeys)} for index ${name} on object ${JSON.stringify(object)}`);
+            //}
+            let keyBatch = keys.splice(0, this.options.maxTransactionSize);
+            while (keyBatch.length > 0) {
+                const tn = this.atomic();
+                for (let key of keyBatch) {
+                    key = this.options.indexValueMutator(key, cname);
+                    if (key && !key.some((item: any) => item == null)) {
+                        tn.set([indexPrefix, ...key, id], 0); // 0 is correct, index entries are just keys
+                    }
                 }
+                await tn.commit();
+                keyBatch = keys.splice(0, this.options.maxTransactionSize);
             }
-            await tn.commit();
-            keyBatch = keys.splice(0, this.options.maxTransactionSize);
         }
+        await this.set([id], object);
     }
-    await this.set([id], object);
+    const args = [object, {cname, metadata,indexType, autoIndex,indexKeys,patch}];
+    await handleEvent("put",Object.assign(  {value:object},cname ? {cname} : undefined,metadata ? {metadata} : undefined),args);
     return id;
 }
 
+
 const _set = db.set.bind(db);
-Denobase.prototype.set = async function (key:any, value:any,metadata:object|undefined) {
+Denodata.prototype.set = async function (key:any, value:any,metadata:object|undefined) {
+    const originalValue = value;
     value = {data:value,metadata:metadata||value[this.options.metadataProperty]};
+    metadata = value.metadata;
     //delete value.data[this.options.metadataProperty];
     const type = typeof(value.metadata?.expires);
     if(type==="number") {
@@ -805,8 +822,64 @@ Denobase.prototype.set = async function (key:any, value:any,metadata:object|unde
     }
     value = serializeValue(value);
     delete value.data[this.options.metadataProperty];
-    return _set(toKey(key),value);
+    const result = await _set(toKey(key),value),
+        args = [key, deserializeSpecial(null,originalValue), metadata];
+    await handleEvent("set",Object.assign({value:{key,value:deserializeSpecial(null,value.data)}},metadata ? {metadata} : undefined),args);
+    return result;
+}
+
+const SUBSCRIPTIONS:{
+    [key:string]:Map<{[key:string]: any },(value:any)=>any>
+} = {
+        delete:new Map(),
+        patch:new Map(),
+        put:new Map(),
+        set:new Map()
+    };
+
+async function handleEvent(event:string, value:{[key:string]:any}={},args:any[]=[]) {
+    for(const entry of SUBSCRIPTIONS[event]) {
+        const pattern:{[key:string]:any} = entry[0].pattern,
+            ptype:string = typeof(pattern),
+            target:{[key:string]:any} = {...value};
+        target.pattern = value.value;
+        delete target.value;
+        if(ptype==="function" && (pattern as Function)(pattern)) {
+            await entry[1].apply(null,args as [value:any]);
+        } else if(selector(target,entry[0])!==undefined) {
+            await entry[1].apply(null,args as [value:any]);
+        }
+    };
+}
+
+Denodata.prototype.subscribe = function(on:{delete?:any,patch?:any,put?:any,set?:any}={},callback:(value:any)=>void, {cname,metadata}:{cname?:string,metadata?:{[key:string]:any}}={}) {
+    for(const [key,pattern] of Object.entries(on)) {
+        SUBSCRIPTIONS[key].set(Object.assign({pattern},cname ? {cname} : undefined,metadata ? {metadata} : undefined),callback);
+    }
+}
+
+Denodata.prototype.unsubscribe = function(on:{delete?:any,patch?:any,put?:any,set?:any}={},callback?:(value:any)=>void,options:{cname?:string,metadata?:{[key:string]:any}}={}) {
+    for(const [event,pattern] of Object.entries(on)) {
+        for (const entry of SUBSCRIPTIONS[event]) {
+            if (pattern) {
+                const ptype = typeof (pattern);
+                if (ptype === "function" && pattern !== entry[0].pattern) {
+                    return;
+                }
+                if (pattern !== undefined) {
+                    if (selector(entry[0], {pattern, ...options}) === undefined) {
+                        return;
+                    }
+                }
+            }
+            if (callback && callback !== entry[1]) {
+               continue;
+            }
+            this[event].subscriptions.delete(entry[0]);
+        }
+    }
 }
 
 
-export {Denobase as default,Denobase};
+
+export default Denodata;

@@ -5,9 +5,9 @@
 //const levenshteinDistance = distance;
 //const toWords = new ToWords();
 
-import {DONE} from "./src/constants.js";
-import soundex from "./src/soundex.js";
-import validateLuhn from "./src/validate-luhn.js";
+import {DONE} from "./constants.js";
+import soundex from "./soundex.js";
+import validateLuhn from "./validate-luhn.js";
 
 
 type Operator = (right:any, params?: { test?:any}) => any;

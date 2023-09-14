@@ -1,15 +1,15 @@
 {
-  "name": "denobase",
-  "version": "0.0.25",
-  "description": "Generalized indexing and search for Deno KV",
+  "name": "denodata",
+  "version": "0.0.27",
+  "description": "Generalized indexing, search, and change subscriptions for Deno KV",
   "type": "module",
-  "main": "index.ts",
+  "main": "mod.ts",
   "scripts": {
-    "test": "deno test  --allow-net --unstable"
+    "test": "deno test  --allow-net --unstable ./src/denodata.test.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anywhichway/denobase.git"
+    "url": "git+https://github.com/anywhichway/denodata.git"
   },
   "keywords": [
     "Deno",
@@ -26,7 +26,7 @@
   "author": "Simon Y. Blackwell",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/anywhichway/denobase/issues"
+    "url": "https://github.com/anywhichway/denodata/issues"
   },
-  "homepage": "https://github.com/anywhichway/denobase#readme"
+  "homepage": "https://github.com/anywhichway/denodata#readme"
 }
