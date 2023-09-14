@@ -149,7 +149,7 @@ Run Deno with the `--allow-net` and  `--unstable` flags.
 
 `Denodata(options={}):Proxy<Deno.Kv>`
 
-  - `options` has the surface `{idProperty:string="#",metadataProperty:string="^",maxTransactionSize:number=10,indexValueMutator:function}`. At the moment, 10 is the max transaction size supported by `Deno KV` itself. `indexValueMutator` is documented below.
+  - `options` has the surface `{idProperty:string="#",metadataProperty:string="^",maxTransactionSize:number=1000,indexValueMutator:function}`. At the moment, 10 is the max transaction size supported by `Deno KV` itself. `indexValueMutator` is documented below.
   - `indexValueMutator` is a function that takes `key` and `cname`. It should either return the key, a modified form of the key, `undefined` or throw an error. The value being indexed is the last item in the `key`. If `undefined` is returned, the property holding the value is not indexed. If an error is thrown the indexing operation is aborted. This is useful for indexing objects that contain properties that contain string values too large for `Deno KV` to handle. The current limit for `Deno KV` is 2048 bytes for an entire key. The denodata index structure includes property names, so the practical limit for a string is slightly less and depends on the length of property names. If you expect large string values, you must provide an implementation for this function. In advanced cases, it can be used to support vector transformations on values.
 
 Notes:
@@ -451,6 +451,10 @@ The following operators are supported in patterns.
 - Beta  commenced when unit test coverage first exceeded 90%
 - The exposed API is stable. Additional features may be exposed.
 
+2023-08-10 v0.0.28 (Beta)
+  - The configuration option `maxTransactionSize` has been modified to default to `1000`, the new maximum supported by `Deno KV`.
+  - Deno was upgraded to v1.36.4 for testing.
+  - A unit test `All books => ./src/denodata.test.js:307:10` will occasionally fail as a result of finding too few records. The reason is unknown.
 
 2023-08-09 v0.0.27 (Beta)
   - Exposed subscription API. Test coverage dropped below 90% as a result.

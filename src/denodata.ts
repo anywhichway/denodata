@@ -260,7 +260,7 @@ type DenodataOptions = {maxTransactionSize?:number,idProperty?:string,metadataPr
 function Denodata(options:DenodataOptions) {
     const me = (Object.create(Denodata.prototype) as {[key:string|symbol]:any});
     Object.assign(me.options,options);
-    me.options.maxTransactionSize ||= 10;
+    me.options.maxTransactionSize ||= 1000;
     me.options.idProperty ||= "#";
     me.options.metadataProperty ||= "^";
     me.options.indexValueMutator ||= (value:any):any => value;
